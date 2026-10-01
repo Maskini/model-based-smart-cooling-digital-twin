@@ -194,3 +194,6 @@ try:
                 st.success("Disturbance submitted to simulator.")
 finally:
     repo.close()
+
+st.divider()
+st.caption("Made by Maskini · © 2026 Maskini")
