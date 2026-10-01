@@ -2,9 +2,12 @@
 
 Verified locally with Python 3.12.14:
 
-- Full suite: **38 tests passed**, including actual TCP MQTT broker restart and delayed startup.
+- Full suite: **40 tests passed**, including actual TCP MQTT broker restart and delayed startup.
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
+- GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
+- The hosted Docker image built and started successfully in GitHub Actions; its runtime/MQTT health check passed.
+- Hosted dashboard tests verified password gating and password rotation.
 - Simulator, twin, development broker and Streamlit ran as separate processes with LLM disabled.
 - Live browser inspection confirmed incoming physical state, model metrics, charts and agent health.
 - Dashboard AppTest verified control submission, sensor fault settings and hidden simulation controls in hardware mode.
@@ -26,7 +29,7 @@ Build output: 934,473 bytes program storage (71%) and 47,676 bytes global dynami
 
 ## Boundaries of this validation
 
-No physical ESP32, DHT22 or fan was available for flashing or hardware-in-the-loop testing. Compilation verifies API compatibility, not wiring, sensor accuracy, motor operation or timing on a deployed board. Docker Desktop's daemon was unavailable, so real MQTT tests and the local demonstration used AMQTT rather than the supplied Mosquitto Compose deployment. The Compose configuration was statically validated. CI is configured for Python 3.11 and 3.12; the remote CI run has not been observed in this local session.
+No physical ESP32, DHT22 or fan was available for flashing or hardware-in-the-loop testing. Compilation verifies API compatibility, not wiring, sensor accuracy, motor operation or timing on a deployed board. Docker Desktop's daemon was unavailable, so real MQTT tests and the local demonstration used AMQTT rather than the supplied Mosquitto Compose deployment. The Compose configuration was statically validated. The remote CI run, including the complete container build and startup, passed: [GitHub Actions run](https://github.com/Maskini/model-based-smart-cooling-digital-twin/actions/runs/36939436687). Hosting resources have not been provisioned; the owner requested cost review before deployment.
 
 To repeat software checks:
 
