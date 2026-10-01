@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: smart-cooling-twin
+    runtime: docker
+    plan: 0.5c-512mb
+    region: frankfurt
+    branch: codex/implement-digital-twin
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /_stcore/health
+    autoDeployTrigger: off
+    disk:
+      name: twin-history
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_PATH
+        value: /data/twin.sqlite
+      - key: DASHBOARD_PASSWORD
+        generateValue: true

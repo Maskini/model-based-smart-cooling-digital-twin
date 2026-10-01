@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in .env}
+      DATABASE_PATH: /data/twin.sqlite
+      PORT: "8501"
+    volumes:
+      - twin-data:/data
+    restart: unless-stopped
+    stop_grace_period: 45s
+volumes:
+  twin-data:
