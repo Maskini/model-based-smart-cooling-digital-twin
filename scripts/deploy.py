@@ -1,4 +1,4 @@
-"""Single-instance hosted simulation. Stop the whole service if any child fails."""
+"""Run the shared API and dashboard behind Render's single public HTTP port."""
 
 import os
 from pathlib import Path
@@ -9,47 +9,50 @@ import threading
 
 
 def service_commands(port: int) -> list[list[str]]:
-    if not 1 <= port <= 65535:
-        raise ValueError("PORT must be between 1 and 65535")
+    if not 1024 <= port <= 65535 or port in (8000, 8502):
+        raise ValueError("PORT must be an unprivileged port other than internal ports 8000/8502")
     return [
-        ["mosquitto", "-c", "deployment/mosquitto.conf"],
-        [sys.executable, "-m", "smart_cooling_twin"],
-        [sys.executable, "-m", "simulator.physical_system"],
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "smart_cooling_twin.api:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+            "--workers",
+            "1",
+            "--no-access-log",
+        ],
         [
             sys.executable,
             "-m",
             "streamlit",
             "run",
             "dashboard/app.py",
-            "--server.address=0.0.0.0",
-            f"--server.port={port}",
+            "--server.address=127.0.0.1",
+            "--server.port=8502",
             "--server.headless=true",
         ],
+        ["nginx", "-c", "/tmp/smart-cooling-nginx.conf", "-g", "daemon off;"],
     ]
 
 
 def main() -> int:
-    if len(os.environ.get("DASHBOARD_PASSWORD", "")) < 16:
-        raise SystemExit(
-            "Set DASHBOARD_PASSWORD to at least 16 characters in the hosting secret settings"
-        )
     env = os.environ.copy()
-    env.update(
-        MQTT_HOST="127.0.0.1",
-        MQTT_PORT="1883",
-        MQTT_TLS="false",
-        MQTT_USERNAME="",
-        MQTT_PASSWORD="",
-        SIMULATION_MODE="true",
-        LLM_ENABLED="false",
-    )
+    env["BACKEND_URL"] = "http://127.0.0.1:8000"
     root = Path(__file__).resolve().parents[1]
+    port = int(env.get("PORT", "8501"))
+    commands = service_commands(port)
+    template = (root / "deployment/nginx.conf.template").read_text()
+    Path("/tmp/smart-cooling-nginx.conf").write_text(template.replace("__PORT__", str(port)))
     stopping = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stopping.set())
     processes: list[subprocess.Popen] = []
     try:
-        for command in service_commands(int(env.get("PORT", "8501"))):
+        for command in commands:
             processes.append(subprocess.Popen(command, cwd=root, env=env))
         while not stopping.wait(0.5):
             for index, process in enumerate(processes):

@@ -26,6 +26,7 @@ jobs:
           docker run -d --name twin-smoke -e DASHBOARD_PASSWORD=ci-only-disposable-password smart-cooling-twin:test
           for attempt in $(seq 1 30); do
             if docker exec twin-smoke python scripts/deployment_health.py; then
+              docker exec twin-smoke python scripts/check_deployment.py
               exit 0
             fi
             sleep 2

@@ -17,6 +17,7 @@ class PhysicalSystem:
     def __init__(self, device_id: str = "cooling-01", seed: int = 7):
         self.device_id = device_id
         self.settings = SimulatorSettings()
+        self.humidity = 47.0
         self.temperature = 27.0
         self.fan_speed = 100.0
         self.random = random.Random(seed)
@@ -68,7 +69,7 @@ class PhysicalSystem:
             timestamp=now,
             temperature=measurement,
             ambient_temperature=s.ambient_temperature,
-            humidity=47,
+            humidity=self.humidity,
             fan_speed=self.fan_speed,
             sensor_ok=not s.sensor_failure,
         )

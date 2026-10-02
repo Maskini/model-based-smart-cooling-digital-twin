@@ -27,3 +27,28 @@ class LLMReasoner:
             )
         except (ValueError, TypeError, RuntimeError):
             return None
+
+
+class HTTPDiagnosticProvider:
+    """Optional provider-neutral diagnostic endpoint returning Diagnostic JSON."""
+
+    def __init__(self, url: str, api_key: str, model: str = ""):
+        self.url, self.api_key, self.model = url, api_key, model
+
+    def diagnose(self, observation: dict) -> dict:
+        import httpx
+
+        try:
+            response = httpx.post(
+                self.url,
+                json={"model": self.model, "observation": observation},
+                headers={"Authorization": "Bearer " + self.api_key},
+                timeout=5,
+                follow_redirects=False,
+            )
+            response.raise_for_status()
+            if len(response.content) > 16384:
+                raise ValueError("Diagnostic response too large")
+            return response.json()
+        except httpx.HTTPError as exc:
+            raise RuntimeError("Diagnostic provider unavailable") from exc

@@ -1,135 +1,144 @@
-# Model-Based Digital Twin of a Smart Cooling System
+# Model-Based Smart Cooling Digital Twin
 
-A functioning Python application that synchronizes a simulated cooling system or ESP32 with a first-order thermal model over MQTT. A deterministic controller operates the fan. An autonomous supervisor diagnoses model drift, validates calibration candidates, applies improvements, and checks whether those improvements persist.
+A portfolio-ready cyber-physical application with **Live Hardware** and **Simulation** modes, one shared Digital Twin core, a deterministic safety controller, thermal prediction and an autonomous supervisor. Visitors can try the complete demonstration without an ESP32 or an AI API key.
 
-This is a practical Model-Based Systems Engineering (MBSE) and Digital Twin demonstrator. It combines a continuously updated physical state, an inspectable predictive model, measured prediction error, and a closed control loop. It runs entirely without hardware or an LLM.
+**Made by Maskini · © 2026 Maskini**
 
-## Quick start — Python 3.11+
-
-Run from this repository's root directory:
+## Try it locally — Python 3.11+
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 cp .env.example .env
+python scripts/run_demo.py
 ```
 
-With Docker Desktop running:
+Open [the dashboard](http://127.0.0.1:8501), choose **Simulation**, and click **Run Demo Scenario**. FastAPI runs on port 8000 and the dashboard on 8501. Ctrl-C stops both. [Interactive API documentation](http://127.0.0.1:8000/api/docs) is also available.
+
+For separate processes:
 
 ```bash
-docker compose up -d
-python -m simulator.physical_system
-```
-
-In two more terminals, activate the same environment and run:
-
-```bash
-python -m smart_cooling_twin
+python -m uvicorn smart_cooling_twin.api:app --host 127.0.0.1 --port 8000
 streamlit run dashboard/app.py --server.address=127.0.0.1 --server.headless=true
 ```
 
-Open [the dashboard](http://localhost:8501). First telemetry normally arrives within a few seconds. The controller starts with a 100% fallback until fresh valid telemetry arrives. Start **one** twin and **one** simulator or physical device per configured device ID. All processes must share the same `DATABASE_PATH` and environment.
+## Two modes, one application
 
-### One-command demonstration
+| | Simulation | Live Hardware |
+|---|---|---|
+| Data source | Thermal physical simulator | ESP32 over HTTPS, or optional LAN MQTT |
+| Hardware required | No | ESP32, DHT22 and cooling fan |
+| Visitor controls | Temperature, humidity, heat load, target, disturbances | Read-only view |
+| Owner controls | Same deterministic controller | Authenticated AUTO/MANUAL and target settings |
+| History | Isolated, bounded visitor session | Persistent SQLite hardware history |
+| Offline behavior | Works independently of any physical device | Shows Offline and last update; safety fallback remains active |
+| Model and agent | Shared core, prediction, validation, calibration and supervision | The same core and policies |
 
-```bash
-python scripts/run_demo.py --local-broker --port 18883
-```
+The mode selector switches the displayed source context. It does not reroute simulated commands to hardware. Every visitor gets a separate simulation session; one visitor's experiment cannot change another visitor's values or the live device.
 
-This launches a development MQTT broker, simulator, twin, and dashboard. It requires the `dev` dependencies but no Docker. Ctrl-C stops the child processes. Without `--local-broker`, it uses an existing broker on `--port` (default 1883).
+### Simulation controls
 
-The demo increases heat at 90 seconds, reduces fan effectiveness at 180 seconds, and varies ambient temperature to make the parameters observable. Watch temperature, MAE, and the Agent timeline over several minutes. Calibration can be rejected when the history mixes disturbances; later attempts use newer data after a 180-second cooldown. Sensor noise makes exact timing variable. The accelerated integration test verifies the complete acceptance and verification sequence reproducibly.
+Use **Start Simulation**, **Stop Simulation**, **Reset**, **Increase Temperature**, **Simulate Overheating**, and **Run Demo Scenario**. Edit temperature, humidity, heat load and target temperature in the sidebar. Advanced controls retain ambient temperature, fan effectiveness, sensor noise and sensor-failure injection. AUTO/MANUAL control remains available within the visitor's own session.
 
-For interactive disturbances, launch the simulator **without `--demo`** and use the dashboard sidebar. Demo mode owns its scheduled heat, ambient, and fan-effectiveness changes.
+Stop freezes physics, history and telemetry timestamps. Reset affects only that visitor. Explicit temperature edits start a new measurement segment so intentional edits are not mistaken for sensor corruption. The dashboard shows measured/applied PWM, requested cooling, state transitions, charts, predictions, rolling MAE, model parameters, alerts, calibration outcomes and readable agent analysis.
 
-## Hosted deployment
+### One-click guided scenario
 
-A complete Docker deployment with persistent history, a private internal MQTT broker and a password-protected dashboard is included. See [deployment instructions](docs/DEPLOYMENT.md) for Render or your own Docker server. GitHub Pages cannot run this Python/MQTT stack.
+1. Start around 27 °C in NORMAL with cooling off.
+2. Apply a gradually acting thermal load.
+3. Cross the normal cooling target and then the fixed 40 °C overheating threshold.
+4. Detect OVERHEATING and enforce maximum cooling.
+5. Remove the excessive heat load and improve available cooling.
+6. Temperature falls toward the 30 °C target.
+7. At or below 29 °C, hysteresis switches cooling off.
 
-## Implemented capabilities
-
-- MQTT telemetry, status and expiring commands; reconnect and resubscribe after broker loss.
-- Validated temperatures, humidity, actuator values, timestamps, device identity, and sensor health.
-- OFF, NORMAL, HEATING, COOLING, OVERHEATING and FAULT states with hysteresis.
-- AUTO proportional cooling and MANUAL fan demand with hard safety overrides.
-- Two-second predictions, timestamp association, residuals, absolute error and a 30-sample rolling MAE.
-- Bounded least-squares parameter estimation with chronological holdout validation.
-- Autonomous OBSERVE → ASSESS → DECIDE → ACT → VERIFY → RECORD supervision.
-- Persistent decisions, calibration cooldown, deduplicated alerts, rollback parameters and pending verification.
-- Live Streamlit overview, charts, agent timeline, controls, simulation disturbances and recent-history export.
-- SQLite telemetry, matched predictions, agent events, calibrations, alerts and runtime settings.
-- ESP32/DHT22 firmware with MQTT, PWM, local safety fallback, reconnect and command watchdog.
-- Optional provider-neutral diagnostic interface isolated from control.
+The run takes about a minute. Actual state transitions and scenario milestones appear in the UI. Physics generates the rising and falling measurements; the scenario does not directly set actuator commands or relax safety limits.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Device[Physical simulator or ESP32] <-->|Telemetry / expiring commands| MQTT[MQTT broker]
-    MQTT <--> Runtime[Digital Twin runtime]
-    Runtime --> State[State machine]
-    Runtime --> Model[Thermal model and predictions]
-    Model --> Validation[Residuals and rolling MAE]
-    Validation --> Agent[Supervisor]
-    Agent --> Policy[Allowed action policy]
-    Policy --> Safety[Safety layer]
-    Safety --> Calibration[Validated calibration / rollback]
-    State --> Controller[Deterministic controller]
-    Controller --> CommandSafety[Final safety clamp]
-    CommandSafety --> MQTT
-    Runtime <--> DB[(SQLite)]
-    Agent --> DB
-    DB <--> UI[Streamlit dashboard]
+    ESP[ESP32 / DHT22 / PWM fan] <-->|Wi-Fi / HTTPS telemetry and expiring commands| API[Digital Twin API]
+    UI[Streamlit dashboard] <--> API
+    API --> LIVE[Live source context]
+    API --> SIM[Isolated visitor simulation contexts]
+    LIVE --> CORE[Shared DigitalTwin implementation]
+    SIM --> CORE
+    CORE --> MODEL[Thermal prediction and validation]
+    CORE --> CONTROL[Deterministic controller and safety]
+    CORE <--> AGENT[Autonomous supervisor and explanations]
+    AGENT --> POLICY[Bounded calibration policy]
+    LIVE --> DB[(Durable SQLite history)]
 ```
 
-The agent never publishes fan commands. Its requests must pass the allowed-action policy and safety checks. Model changes affect diagnostics and forecasts; actuator demand comes only from the deterministic controller and always passes the final safety clamp.
+`SensorSource` is the adapter interface. `Esp32SensorSource`, `SimulationSensorSource`, and the optional `MqttSensorSource` all exchange the same validated `Telemetry` and `FanCommand` domain records with the same core. Transport callbacks and firmware-specific details do not contain application control decisions.
 
-## Model, prediction and calibration
+For Render, Nginx exposes the dashboard and `/api/*` through a single HTTPS address. Simulation remains usable while the physical device is off. The backend keeps live state in a separate `*.live.sqlite` database and leaves existing MQTT history intact.
+
+## Model and validation
 
 ```text
 dT/dt = k_heat + k_ambient * (T_ambient - T) - k_fan * fan_speed / 100
 T_next = T + dt * dT/dt
 ```
 
-Temperature is °C, time is seconds, `k_heat` and `k_fan` are °C/s, and `k_ambient` is 1/s. Integration uses Euler steps of at most one second. Default parameters are `0.12`, `0.012`, and `0.25` respectively.
+Temperature is °C and time is seconds. Defaults are `k_heat=0.12 °C/s`, `k_ambient=0.012 /s` and `k_fan=0.25 °C/s`. Euler integration uses steps no longer than one second. The model is a deliberately simplified thermal approximation, not a high-fidelity thermodynamic simulator.
 
-Every accepted measurement produces a forecast two seconds ahead using the just-issued command and constant ambient temperature. A later sample within 0.5 seconds of the target is matched; missing or late samples are not treated as prediction errors. Residual = measured − predicted. MAE is the mean of the last 30 absolute residuals.
+Each accepted measurement creates a two-second forecast. Later measurements within 0.5 seconds of its target are matched. Residual = measured − predicted; rolling MAE uses 30 absolute residuals. Missing samples are not treated as prediction errors.
 
-Calibration needs at least 60 usable intervals and fan variation of at least 15 percentage points in the training data. It fits the last 120 intervals, uses the first 70% to train and the final 30% to validate, and accepts only a bounded candidate with at least 15% lower holdout MAE. `k_ambient` is held fixed when its independent variation is not identifiable. Parameter bounds are `k_heat: [0,2]`, `k_ambient: [0.0001,0.2]`, `k_fan: [0.001,3]`.
+Calibration uses at least 60 usable intervals and at least 15 percentage points of fan excitation. The first 70% of recent intervals fit the candidate; the final 30% validate it. A candidate must stay within physical parameter bounds and improve holdout MAE by at least 15%. The supervisor then checks 30 fresh intervals and rolls back unless improvement persists by at least 5%. Calibration cooldown, decisions, outcomes and alerts remain inspectable.
 
-The supervisor runs every 10 seconds. Three degraded assessments with rolling MAE above 0.06 °C trigger a calibration attempt, subject to device health and a 180-second cooldown. On 30 fresh intervals, the candidate must remain at least 5% better than the previous model or it is rolled back. Verification times out after 180 seconds without sufficient data. Alert evidence and decisions are stored as concise operational records, not hidden reasoning.
+## Agent analysis and safety
 
-## Control and safety defaults
+The supervisor operates in both modes through OBSERVE → ASSESS → DECIDE → ACT → VERIFY → RECORD. It monitors connectivity, sensor health, temperature trends, actuator response, residual bias, model drift and recent actions. Human-readable explanations describe the actual controller decision and recommendations, for example why maximum cooling overrode manual demand.
 
-| Condition | Behavior |
+| Condition | Deterministic behavior |
 |---|---|
-| NORMAL / HEATING / OFF, AUTO | 0% fan demand |
-| COOLING, AUTO | `20 + 20 × (temperature − setpoint)`, clamped to 0–100% |
-| MANUAL | Requested percentage, subject to all safety checks |
-| ≥40 °C or FAULT | 100% cooling overrides manual demand |
-| Cooling / overheating exit | 1 °C hysteresis |
-| Dashboard setpoint | 20–35 °C |
-| Missing valid telemetry | FAULT after 10 seconds by default |
-| MQTT disconnected | Immediate runtime FAULT once disconnect is detected |
-| Invalid sensor / jump >2 °C/s | FAULT and alert |
-| Device command missing or expired | Local 100% fallback within five seconds |
+| NORMAL / HEATING / OFF in AUTO | Zero normal fan demand |
+| COOLING in AUTO | `20 + 20 × (temperature − target)`, clamped to 0–100% |
+| MANUAL | Requested demand, subject to safety |
+| Temperature ≥40 °C or FAULT | 100% fallback overrides manual demand |
+| Cooling exit | Target −1 °C hysteresis |
+| Owner/visitor target | 20–35 °C |
+| No valid device telemetry | Offline / FAULT after 10 seconds by default |
+| Device receives no valid command | Local maximum cooling within five seconds |
 
-Commands are refreshed every second and expire after five seconds. Duplicate/out-of-order telemetry cannot refresh the watchdog. The model supervisor cannot alter the hard temperature limit. A fan commanded on with warming and positive residual bias produces a diagnostic warning; this is evidence of possible fan degradation or extra heat, not proof of mechanical failure.
+The deterministic controller owns actuation. Neither the supervisor nor an LLM can issue raw PWM, publish arbitrary commands, modify the hard limit, or execute code. The existing LLM provider abstraction now has an optional HTTP diagnostic adapter. Set `LLM_ENABLED`, `LLM_API_URL`, `LLM_API_KEY` and `LLM_MODEL` only if using a service that implements the documented diagnostic contract. Without a key/provider, all simulation, hardware control and agent explanations work normally. External diagnostic output is schema-validated and has no actuator authority.
 
-## Hardware
+## Connect real hardware
 
-The intended prototype uses an ESP32, DHT22, a logic-level MOSFET and a 5 V fan. Drive the fan through a suitable power stage, with a common ground; never power it from a GPIO. GPIO 4 is the default sensor input and GPIO 18 is the PWM output. The firmware uses Arduino-ESP32 3.x.
+Use `firmware/smart_cooling_http` for the Render/Internet path. Configure its ignored `config.h` with Wi-Fi credentials, the public HTTPS backend URL, matching `DEVICE_ID` and `HARDWARE_API_TOKEN`, and the trusted root CA. The ESP32 POSTs telemetry every two seconds and receives the latest expiring command in the response. A separate authenticated command-polling endpoint is also available. The firmware validates TLS, identity, numeric ranges, command time and expiry, and reconnects after failures.
 
-See [firmware setup and limitations](firmware/README.md). Set `SIMULATION_MODE=false`, stop the simulator, configure the ESP32's ignored `config.h`, and run the same twin and dashboard. The ESP32 uses the [same MQTT contract](docs/MQTT.md). Its ambient value is a configured estimate unless a second sensor is added.
+The intended hardware is an ESP32, DHT22, logic-level MOSFET and 5 V fan, with a suitable motor power stage and common ground. GPIO 4 is the default sensor pin and GPIO 18 the PWM pin. Do not power a fan from a GPIO. Fan telemetry is applied PWM, not measured RPM. `servo_angle` is an optional telemetry field for future servo-equipped hardware; the supplied firmware operates the existing PWM fan.
 
-The supplied Mosquitto configuration is an anonymous **loopback-only development broker**. For an ESP32 on the LAN, configure a reachable broker with authentication and appropriate network restrictions; set matching environment and firmware credentials. Python supports TLS using the system CA store. The supplied Arduino sketch uses plain MQTT and therefore requires a trusted isolated LAN broker. Credentials belong only in `.env` and `firmware/smart_cooling/config.h`, both ignored by Git.
+See [firmware setup](firmware/README.md) and [HTTP/API contract](docs/HTTP_API.md). No board is needed to run or deploy the public simulation.
 
-## Optional LLM role
+### Preserved MQTT compatibility
 
-`LLM_ENABLED=false` is the default and the complete application works without any key or provider. `LLMReasoner` accepts an injected `DiagnosticProvider`, validates its summary and possible causes, and returns no diagnostic if disabled. No provider is bundled and the runtime does not issue external LLM requests. The flag is reserved for applications injecting such a provider; setting it alone does not enable an integration. Provider responses cannot set PWM, publish MQTT, execute code, or change safety limits.
+The original MQTT sketch and runtime remain available:
 
-## Tests and quality checks
+```bash
+docker compose up -d
+python -m simulator.physical_system
+python -m smart_cooling_twin
+```
+
+Those commands run the legacy MQTT core. To use MQTT with the new dashboard, run the API with `HARDWARE_TRANSPORT=MQTT` instead of starting that standalone twin, or use:
+
+```bash
+python scripts/run_demo.py --local-broker --port 18883
+```
+
+Select Live Hardware to inspect the optional MQTT source. Visitor simulations remain independent. The latter command retains the earlier model-degradation disturbance demo. Never run two controller processes against the same device ID. [MQTT contract](docs/MQTT.md).
+
+## Deployment and configuration
+
+The Dockerfile, process supervisor, Nginx routing, health checks, persistent disk and Render blueprint are prepared. **Hosting has not been provisioned.** See [deployment instructions](docs/DEPLOYMENT.md) for the complete variable list and operating steps.
+
+Public Simulation does not require a login. Hardware ingress uses `HARDWARE_API_TOKEN`; owner controls use a separate `ADMIN_API_TOKEN` and dashboard password. Empty tokens disable those hardware operations. `PUBLIC_DEMO=false` protects the dashboard and live API views for a private deployment. Secrets belong in environment variables and ignored firmware configuration, never Git.
+
+## Tests
 
 ```bash
 pytest -q
@@ -137,30 +146,25 @@ ruff check src simulator dashboard tests scripts
 ruff format --check src simulator dashboard tests scripts
 ```
 
-The test suite includes equations, validation, state transitions, hysteresis, controller safety, prediction matching, calibration excitation and holdout checks, autonomous degradation recovery, persistent cooldown, alert deduplication, and real TCP MQTT broker restart. MQTT tests launch their own loopback AMQTT broker on an unused port. Docker and hardware are not needed. CI runs the suite on Python 3.11 and 3.12.
+Tests cover model equations, state transitions, safety, real TCP MQTT recovery, authenticated HTTP telemetry and commands, stale/replayed readings, offline recovery, visitor isolation, paused simulation, reset, guided overheating recovery, persistence, calibration verification/rollback, optional AI validation and dashboard interactions. CI tests Python 3.11/3.12 and builds/starts the complete Docker deployment, then exercises its public API through Nginx.
 
 ## Repository map
 
 ```text
-src/smart_cooling_twin/  Domain, model, control, calibration, agent, persistence, MQTT runtime
-simulator/               Physical device substitute
-dashboard/app.py         Streamlit presentation and settings forms
-firmware/                ESP32 sketch and local configuration example
-scripts/                 Demo launcher and development test broker
-tests/                   Unit, integration and dashboard checks
-docs/                    Requirements, architecture, MQTT and original concept
-mosquitto/               Development broker configuration
-data/                    Local SQLite history (ignored)
+src/smart_cooling_twin/  Shared core, adapters, API, model, controller, agent and persistence
+simulator/              Reusable physical thermal simulator and original MQTT runner
+dashboard/              One portfolio dashboard for both modes
+firmware/               HTTPS and original MQTT ESP32 sketches
+scripts/                Local launcher, deployment supervisor and health checks
+deployment/             Nginx configuration and container entrypoint
+docs/                   Architecture, requirements, contracts, deployment and validation
+data/                   Local runtime data (ignored)
 ```
 
-The original design README is preserved at [docs/ORIGINAL_DESIGN.md](docs/ORIGINAL_DESIGN.md), and the original dashboard image is preserved below. It was moved to avoid a case-insensitive filename conflict with `dashboard/`.
+## Limits and future work
 
-![Original dashboard concept](docs/assets/dashboard-concept.jpg)
+This is an educational prototype, not a certified thermal safety system. The first-order model omits actuator lag, multiple thermal masses and nonlinear airflow. A constant cooling term can predict below ambient. Calibration depends on meaningful excitation and may reject data that mixes disturbances. A second ambient sensor, tachometer and hardware-in-the-loop commissioning are future improvements.
 
-## Limitations and future work
+The default deployment uses one process/replica with bounded, disposable visitor sessions (16 concurrent, 15-minute idle timeout). Live history persists until archived by the operator. External AI diagnostics are opt-in and rate-limited; no external model is bundled. Physical wiring, sensor accuracy and motor behavior still require testing on the actual ESP32.
 
-This is a single-device educational prototype, not a certified thermal safety system. The linear model omits thermal masses, nonlinear airflow, actuator lag and power measurements. A constant cooling term may predict below ambient; do not interpret such forecasts as physical guarantees. Fan telemetry reports applied PWM, not measured RPM. The model assumes approximately constant fan demand over each sampling interval. A disturbance changing during calibration can lead to rejection or later rollback.
-
-SQLite history grows until archived by the operator; backup the database using SQLite's backup API. The dashboard and runtime are intended for one trusted local host; dashboard authentication and multi-device routing are future work. Hardware-in-the-loop measurements, fan tachometry, measured ambient temperature, richer heat-transfer models and parameter uncertainty are useful next steps.
-
-See [validation results](docs/VALIDATION.md), [requirements](docs/REQUIREMENTS.md), [architecture](docs/ARCHITECTURE.md), and [MQTT contract](docs/MQTT.md).
+Original work is preserved in [the design README](docs/ORIGINAL_DESIGN.md) and [dashboard concept](docs/assets/dashboard-concept.jpg). See [requirements](docs/REQUIREMENTS.md), [architecture](docs/ARCHITECTURE.md), and [validation](docs/VALIDATION.md).

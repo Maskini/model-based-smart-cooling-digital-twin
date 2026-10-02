@@ -2,19 +2,26 @@
 
 Verified locally with Python 3.12.14:
 
-- Full suite: **40 tests passed**, including actual TCP MQTT broker restart and delayed startup.
+- Full suite: **52 tests passed**, including actual TCP MQTT broker restart and delayed startup.
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
 - GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
-- The hosted Docker image built and started successfully in GitHub Actions; its runtime/MQTT health check passed.
-- Hosted dashboard tests verified password gating and password rotation.
+- The earlier MQTT deployment image built and started successfully in GitHub Actions. The current workflow additionally checks the shared API, offline live state, authentication and an isolated simulation through the public proxy.
+- Dashboard tests verified private password gating, isolated simulation controls, live read-only mode, and backend failure handling.
+- API tests verified hardware authentication, stale/replayed telemetry rejection, offline recovery, owner control safety overrides, session isolation/expiry, pause/reset, and diagnostic-only AI responses.
+- The shared MQTT adapter passed a real-broker integration test.
+- The guided scenario completed in the browser: normal → heating → overheating → recovery → cooling off.
 - Simulator, twin, development broker and Streamlit ran as separate processes with LLM disabled.
 - Live browser inspection confirmed incoming physical state, model metrics, charts and agent health.
 - Dashboard AppTest verified control submission, sensor fault settings and hidden simulation controls in hardware mode.
 - Running MQTT demo autonomously accepted a calibration and verified fresh-data MAE improvement from **0.29106 °C to 0.02378 °C**. This is one observed demonstration, not an accuracy guarantee.
 - `.env`, hardware `config.h`, SQLite databases and the virtual environment are excluded by Git.
 
-## Firmware compilation
+## HTTPS firmware compilation
+
+The new REST sketch compiled for `esp32:esp32:esp32` with Arduino-ESP32 3.3.12, ArduinoJson 7.4.2, DHT 1.4.7 and Unified Sensor 1.1.15. Program storage: **1,045,411 bytes (79%)**; global memory: **49,044 bytes (14%)**. It uses certificate-validated HTTPS; the operator must configure the backend root CA and hardware token before flashing.
+
+## Original MQTT firmware compilation
 
 The actual Arduino sketch compiled successfully for `esp32:esp32:esp32` using:
 

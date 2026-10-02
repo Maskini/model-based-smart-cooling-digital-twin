@@ -1,5 +1,13 @@
 # Architecture and engineering decisions
 
+## Live Hardware and Simulation extension
+
+The primary runtime is now `api.py` / `TwinRuntime`. `TwinContext` combines an interchangeable `SensorSource` with the same existing core. The live context uses authenticated HTTPS ingress or the optional MQTT adapter; each visitor gets an isolated simulation context using that same implementation. SQLite live history uses a sibling `*.live.sqlite` path so earlier simulated MQTT data is preserved without mixing it into physical measurements. Visitor repositories are ephemeral and bounded.
+
+`TwinState.operating_mode` distinguishes LIVE, SIMULATION and legacy MQTT. `source_connected` makes the core transport-independent; when absent, the legacy MQTT connection field remains compatible. `StateTransition` records capture real state changes. The dashboard uses HTTP exclusively and switching its view cannot route simulation commands to a physical device.
+
+`explanations.py` describes the actual state and controller rules. The existing supervisor still owns bounded calibration and verification. An optional HTTP diagnostic provider runs off the control loop and returns only schema-validated prose. Nginx routes Render’s single public port to FastAPI and Streamlit. See [HTTP/API and session details](HTTP_API.md) and [deployment](DEPLOYMENT.md).
+
 ## Module boundaries
 
 | Module | Responsibility |
@@ -16,7 +24,7 @@
 | `repository` | SQLite queries and record serialization |
 | `llm` | Optional diagnostic provider protocol, without action authority |
 
-Each process opens its own SQLite connection. Paho's networking thread never touches the database. SQLite WAL and a ten-second busy timeout permit dashboard reads alongside runtime writes. UI logic contains no SQL. Runtime history is bounded to 600 measurements and 60 pending predictions. Persistent history is intentionally retained until the operator archives it.
+Each process opens its own SQLite connection. Paho's networking thread never touches the database. SQLite WAL and a ten-second busy timeout permit dashboard reads alongside runtime writes. UI logic contains no SQL; the primary dashboard uses the API. Runtime history is bounded to 600 measurements and 60 pending predictions. Persistent history is intentionally retained until the operator archives it.
 
 ## Control ownership
 
@@ -29,8 +37,8 @@ flowchart TD
   SM --> C[Deterministic controller]
   UI[Validated UI settings] --> C
   C --> SC[Hard safety override and 0–100 clamp]
-  SC --> MQTT[Expiring MQTT command]
-  MQTT --> D[Device validation and local watchdog]
+  SC --> Adapter[Expiring command through active adapter]
+  Adapter --> D[Device validation and local watchdog]
 ```
 
 The supervisor's allowed actions are NONE, CALIBRATE, APPLY, ROLLBACK, ALERT and FORECAST. Calibration/application are denied while health is unknown, disconnected, faulted or overheating. Rollback may restore known previous parameters during faults. No supervisor or LLM tool exposes a fan setter or MQTT client. The deterministic controller is independent of fitted model coefficients, so a poor fit cannot increase actuator authority. The hard limit is a frozen `SafetyLimits` record and is not exposed as a dashboard setting.
@@ -65,13 +73,13 @@ stateDiagram-v2
   Record --> Observe
 ```
 
-Events expose evidence, decisions and expected/actual outcomes. The supervisor checks device and MQTT health, trend, residual bias, commanded cooling response, calibration age, recent actions and active alerts. Persistent cooldown prevents repeated attempts after restart. Active alert codes deduplicate repeated observations and resolve on recovery. A pending verification survives restart; the agent collects new healthy data before verifying or rolls back on timeout. Agent disabling is configured through `AGENT_ENABLED`.
+Events expose evidence, decisions and expected/actual outcomes. The supervisor checks device and source connection health, trend, residual bias, commanded cooling response, calibration age, recent actions and active alerts. Persistent cooldown prevents repeated attempts after restart. Active alert codes deduplicate repeated observations and resolve on recovery. A pending verification survives restart; the agent collects new healthy data before verifying or rolls back on timeout. Agent disabling is configured through `AGENT_ENABLED`.
 
 ## Defaults and limits
 
 The first-order approximation is intentionally modest: it is useful for visible feedback, drift detection and parameter estimation, not a high-fidelity thermodynamic claim. Sensor noise, timing jitter and actuator changes inside a measurement interval affect residuals. Fan-effectiveness alerts identify hypotheses, not causal proof. A second ambient sensor and tachometer would substantially improve observability.
 
-The LLM provider interface can supply validated human-readable diagnostics in an embedding application. It is not wired to the default runtime and no provider or external network request is needed. The supervisor itself is deterministic autonomous software.
+The optional HTTP diagnostic provider supplies validated human-readable diagnostics on request when configured through environment variables. Both modes work without a provider or external AI request. The supervisor itself is deterministic autonomous software.
 
 ## Original design
 

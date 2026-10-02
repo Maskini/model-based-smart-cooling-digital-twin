@@ -4,7 +4,10 @@ services:
     ports:
       - "127.0.0.1:8501:8501"
     environment:
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in .env}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-}
+      HARDWARE_API_TOKEN: ${HARDWARE_API_TOKEN:-}
+      PUBLIC_DEMO: "true"
       DATABASE_PATH: /data/twin.sqlite
       PORT: "8501"
     volumes:

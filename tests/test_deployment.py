@@ -6,9 +6,12 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_hosted_dashboard_blocks_data_and_controls_until_login(tmp_path, monkeypatch):
+def test_hosted_dashboard_blocks_data_and_controls_until_login(
+    tmp_path, monkeypatch, dashboard_backend
+):
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "private.sqlite"))
     monkeypatch.setenv("DASHBOARD_PASSWORD", "test-only-long-password")
+    monkeypatch.setenv("PUBLIC_DEMO", "false")
     app = AppTest.from_file(str(ROOT / "dashboard/app.py")).run()
     assert not app.exception
     assert len(app.slider) == 0
@@ -33,4 +36,5 @@ def test_deployment_port_validation():
     with pytest.raises(ValueError):
         module.service_commands(65536)
     commands = module.service_commands(10000)
-    assert "--server.port=10000" in commands[-1]
+    assert "--server.port=8502" in commands[1]
+    assert commands[-1][0] == "nginx"

@@ -6,7 +6,7 @@ services:
     region: frankfurt
     branch: codex/implement-digital-twin
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /_stcore/health
+    healthCheckPath: /api/health
     autoDeployTrigger: off
     disk:
       name: twin-history
@@ -19,3 +19,13 @@ services:
         value: /data/twin.sqlite
       - key: DASHBOARD_PASSWORD
         generateValue: true
+      - key: ADMIN_API_TOKEN
+        generateValue: true
+      - key: HARDWARE_API_TOKEN
+        generateValue: true
+      - key: HARDWARE_TRANSPORT
+        value: REST
+      - key: PUBLIC_DEMO
+        value: "true"
+      - key: DEVICE_ID
+        value: cooling-01

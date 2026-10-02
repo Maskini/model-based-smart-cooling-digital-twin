@@ -151,3 +151,42 @@ def test_connects_when_broker_starts_late(broker):
         wait_for(lambda: transport.connected)
     finally:
         transport.stop()
+
+
+def test_shared_core_accepts_legacy_mqtt_adapter(broker, tmp_path):
+    from smart_cooling_twin.runtime import TwinContext
+    from smart_cooling_twin.sources import MqttSensorSource
+
+    settings = Settings(mqtt_host="127.0.0.1", mqtt_port=broker.port)
+    source = MqttSensorSource(settings)
+    context = TwinContext(settings, source, Repository(str(tmp_path / "adapter.sqlite")), "LIVE")
+    device = MQTTClient(settings, "adapter-test-device", [COMMAND])
+    device.start()
+    try:
+        wait_for(lambda: source.connected(time.time()) and device.connected)
+        time.sleep(0.2)
+        now = time.time()
+        device.publish(
+            TELEMETRY,
+            Telemetry(
+                device_id="cooling-01",
+                timestamp=now,
+                temperature=33,
+                ambient_temperature=24,
+                humidity=45,
+                fan_speed=0,
+            ),
+        )
+
+        def updated():
+            context.step(time.time(), force=True)
+            return context.twin.state.device_online
+
+        wait_for(updated)
+        assert context.twin.state.operating_mode == "LIVE"
+        assert context.twin.state.state == "COOLING"
+        assert context.twin.state.fan_command == 80
+        assert context.repository.recent("telemetry")
+    finally:
+        device.stop()
+        context.close()

@@ -8,6 +8,7 @@ from .models import (
     FanCommand,
     PredictionResult,
     SystemState,
+    StateTransition,
     Telemetry,
     ThermalParameters,
     TwinState,
@@ -38,13 +39,22 @@ class DigitalTwin:
         self.last_received: float | None = None
         self.agent = TwinSupervisorAgent(SupervisorTools(self), enabled=agent_enabled)
 
+    def set_state(self, state: SystemState, now: float, reason: str) -> None:
+        previous = self.state.state
+        self.state.state = self.machine.state = state
+        if state != previous:
+            self.repository.append(
+                "transitions",
+                StateTransition(timestamp=now, previous=previous, current=state, reason=reason),
+            )
+
     def clear_predictions(self):
         self.pending.clear()
         self.validator = ModelValidator()
         self.state.metrics = self.state.metrics.__class__()
 
     def fault(self, now: float, code: str, message: str) -> FanCommand:
-        self.state.state = self.machine.state = SystemState.FAULT
+        self.set_state(SystemState.FAULT, now, message)
         self.state.device_online = False
         self.repository.create_alert(Alert(timestamp=now, code=code, message=message))
         self.clear_predictions()
@@ -76,12 +86,16 @@ class DigitalTwin:
         self.repository.resolve_alert("TEMPERATURE_JUMP")
         self.repository.append("telemetry", telemetry)
         self.history.append(telemetry)
-        self.state.state = self.machine.update(
-            telemetry.temperature,
-            trend,
-            self.controller.settings.setpoint,
-            healthy=self.state.mqtt_connected,
-            powered=telemetry.powered,
+        self.set_state(
+            self.machine.update(
+                telemetry.temperature,
+                trend,
+                self.controller.settings.setpoint,
+                healthy=self.state.connection_healthy,
+                powered=telemetry.powered,
+            ),
+            now,
+            "Validated temperature, trend and safety thresholds",
         )
         while self.pending and self.pending[0].target_timestamp <= telemetry.timestamp + 0.25:
             prediction = self.pending.popleft()
@@ -123,7 +137,7 @@ class DigitalTwin:
 
     def tick(self, now: float) -> FanCommand:
         if (
-            not self.state.mqtt_connected
+            not self.state.connection_healthy
             or self.last_received is None
             or now - self.last_received > self.timeout
         ):

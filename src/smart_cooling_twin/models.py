@@ -39,6 +39,7 @@ class Telemetry(Record):
     fan_speed: Percent
     sensor_ok: bool = True
     powered: bool = True
+    servo_angle: Annotated[Finite, Field(ge=0, le=180)] | None = None
 
 
 class FanCommand(Record):
@@ -83,10 +84,38 @@ class TwinState(Record):
     mode: Literal["AUTO", "MANUAL"] = "AUTO"
     fan_command: Percent = 100
     mqtt_connected: bool = False
+    source_connected: bool | None = None
+    operating_mode: Literal["LIVE", "SIMULATION", "MQTT"] = "MQTT"
     device_online: bool = False
     model_health: ModelHealth = ModelHealth.WATCH
     prediction: PredictionResult | None = None
     metrics: ValidationMetrics = Field(default_factory=ValidationMetrics)
+
+    @property
+    def connection_healthy(self) -> bool:
+        return self.mqtt_connected if self.source_connected is None else self.source_connected
+
+
+class StateTransition(Record):
+    timestamp: Finite
+    previous: SystemState
+    current: SystemState
+    reason: str
+
+
+class SimulationControls(Record):
+    temperature: Temperature | None = None
+    humidity: Percent | None = None
+    heat_load: Finite | None = Field(default=None, ge=0, le=2)
+    target_temperature: Finite | None = Field(default=None, ge=20, le=35)
+    ambient_temperature: Temperature | None = None
+    fan_effectiveness: Finite | None = Field(default=None, ge=0, le=3)
+    noise: Finite | None = Field(default=None, ge=0, le=5)
+    sensor_failure: bool | None = None
+
+
+class SimulationAction(Record):
+    action: Literal["START", "STOP", "RESET", "INCREASE", "OVERHEAT", "DEMO"]
 
 
 class AgentObservation(Record):

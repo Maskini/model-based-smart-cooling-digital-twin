@@ -1,45 +1,76 @@
-# Deploy the complete simulation
+# Deploy the Live + Simulation portfolio app
 
-The hosted deployment runs the MQTT broker, physical simulator, twin runtime and Streamlit dashboard in one container. It keeps the broker on the container's loopback interface, serves the dashboard through the host's HTTPS endpoint, and stores SQLite history on a persistent disk. It is a single-instance simulation; do not scale replicas or connect real hardware to this deployment.
+The repository is prepared for deployment. Creating paid hosting resources is a separate owner-approved step.
 
-## Render
+## Render architecture
 
-The repository includes `render.yaml` with a Docker web service in Frankfurt, a 1 GB persistent disk and a generated dashboard password. It deploys branch `codex/implement-digital-twin`; after merging, change the branch to `main` in Render and in the blueprint. Automatic deployment is disabled so pushes do not unexpectedly restart the running demonstration.
+One Docker web service runs:
 
-1. Sign in to Render and create a Blueprint from this GitHub repository.
-2. Select `codex/implement-digital-twin` as the blueprint branch.
-3. Review the service and disk price shown by Render before creating the resources. Persistent disks require paid compute.
-4. Deploy and wait for the service to become healthy.
-5. Find `DASHBOARD_PASSWORD` in the service's Environment settings. Enter it on the dashboard's sign-in screen. Do not commit it or post it in a GitHub issue.
+- Nginx on Render's assigned `PORT`, routing `/api/*` to FastAPI and the remaining paths (including WebSockets) to Streamlit.
+- One FastAPI/Uvicorn process on internal port 8000, owning hardware state and isolated simulation sessions.
+- Streamlit on internal port 8502, calling the same API.
 
-Render's HTTP health check targets `/_stcore/health`. The process supervisor shuts down the container if any child exits, so Render can restart the whole stack. Docker's additional health check inspects the twin heartbeat and MQTT connection. Runtime data survives service restarts through `/data`; retain or back up the disk before deleting the service.
+Render terminates public HTTPS. ESP32 requests travel outbound over Wi-Fi/Internet to the public `/api/devices/{device_id}/telemetry` route; commands return in the response. No publicly exposed MQTT broker, inbound device port, separate frontend app or third-party database is required. MQTT remains available as an optional LAN adapter.
 
-References: [Render Docker web services](https://render.com/docs/web-services), [persistent disks](https://render.com/docs/disks), [Blueprint configuration](https://render.com/docs/blueprint-spec), [current pricing](https://render.com/pricing).
+## Render setup
 
-## Existing server with Docker
+1. Create a Blueprint from this repository and branch `codex/implement-digital-twin` using `render.yaml`. After merging, change the deployment branch to `main` in the blueprint and service.
+2. Review the current compute and disk cost before provisioning. The included plan is `0.5c-512mb` with a 1 GB persistent disk in Frankfurt. Start with the configured session limit and increase resources if actual usage requires it.
+3. The blueprint generates separate `HARDWARE_API_TOKEN`, `ADMIN_API_TOKEN` and `DASHBOARD_PASSWORD` secrets. Keep these in Render's environment settings.
+4. Public visitors can immediately use Simulation without signing in. Live values are read-only for visitors. Unlocking live controls requires the owner password; the dashboard keeps the admin token server-side.
+5. For real hardware, copy the hardware token, device ID, public backend URL and trusted root CA into the ignored configuration for `firmware/smart_cooling_http` and flash it. See [the HTTP contract](HTTP_API.md).
+
+Automatic deploys remain off. `/api/health` stays healthy when no ESP32 is connected, so an offline device does not make Render restart a functioning public demonstration. Child-process exits stop the service; Render can restart the complete stack. Docker's health check verifies both dashboard and API. CI additionally exercises public simulation, hardware authentication, safety and session isolation through Nginx.
+
+## Environment variables
+
+| Variable | Purpose / default |
+|---|---|
+| `PORT` | Public proxy port assigned by Render |
+| `BACKEND_URL` | Dashboard-to-API URL; container sets `http://127.0.0.1:8000` |
+| `DEVICE_ID` | Expected hardware identity; `cooling-01` |
+| `HARDWARE_TRANSPORT` | `REST` by default; optional `MQTT` for LAN compatibility |
+| `HARDWARE_API_TOKEN` | Device authentication; empty disables REST device access |
+| `ADMIN_API_TOKEN` | Owner control and private API authentication |
+| `DASHBOARD_PASSWORD` | Owner dashboard login |
+| `PUBLIC_DEMO` | `true`: anonymous isolated simulations and read-only live display |
+| `DATABASE_PATH` | Base path; live history uses sibling `*.live.sqlite` on `/data` |
+| `TELEMETRY_TIMEOUT` | Seconds before hardware is Offline; default 10 |
+| `SIMULATION_START_TEMPERATURE` | 27 °C |
+| `SIMULATION_HUMIDITY` | 47% |
+| `SIMULATION_HEAT_LOAD` | 0.12 °C/s |
+| `SIMULATION_MAX_SESSIONS` | 16 concurrent visitor contexts |
+| `SIMULATION_SESSION_TTL` | 900 seconds without visitor activity |
+| `AGENT_ENABLED` | Autonomous supervision enabled by default |
+| `LLM_ENABLED` | Optional diagnostics disabled by default |
+| `LLM_API_URL`, `LLM_API_KEY`, `LLM_MODEL` | Optional diagnostic provider adapter configuration |
+
+No secrets are written into the image or Git. Keep `.env` and firmware `config.h` local. A private dashboard (`PUBLIC_DEMO=false`) needs both the owner password and admin token configured.
+
+## Docker server
 
 ```bash
-# In .env, set DASHBOARD_PASSWORD to a unique random value of at least 16 characters.
 docker compose -f compose.deploy.yml up -d --build
 docker compose -f compose.deploy.yml ps
 ```
 
-The default address is `127.0.0.1:8501`. Use an HTTPS reverse proxy on the server to publish it; the proxy must support WebSockets. Alternatively, access it privately through an SSH tunnel:
+The default host binding is `127.0.0.1:8501`. Use a trusted HTTPS reverse proxy to publish the service, forwarding WebSockets, or access it through `ssh -L 8501:127.0.0.1:8501 your-server`. Set owner/device secrets in `.env` to enable live hardware operations. Without them, public simulation still works and hardware access stays disabled.
+
+Keep one container replica and one Uvicorn worker. Session state and capabilities are in memory; multiple workers would require a shared session store, which this prototype intentionally avoids. A named volume persists hardware telemetry, control settings, agent memory and calibration parameters. Visitor simulation state is disposable. Back up the disk before deleting a service or volume.
+
+## Local start
 
 ```bash
-ssh -L 8501:127.0.0.1:8501 your-server
+python scripts/run_demo.py
 ```
 
-The named Docker volume preserves the database. Do not use `docker compose down -v` unless you intend to remove history. Keep one container instance. A password change invalidates existing application sessions on their next full rerun; restart the service when rotating the deployment secret.
+This starts FastAPI on 8000 and Streamlit on 8501. For separate terminals:
 
-## Deployment behavior
+```bash
+python -m uvicorn smart_cooling_twin.api:app --host 127.0.0.1 --port 8000
+streamlit run dashboard/app.py --server.address=127.0.0.1 --server.headless=true
+```
 
-- Starts the regular simulator. Disturbances are controlled by the dashboard rather than the timed demo script.
-- Requires a dashboard password before any data or control forms are rendered.
-- Keeps MQTT private to the container; port 1883 is not exposed.
-- Forces simulation mode and disables external LLM calls.
-- Starts service processes as a non-root user; the entrypoint only prepares disk ownership before dropping privileges.
-- Stops all processes on SIGTERM and fails the service if a child exits.
-- Builds without local secrets, databases, virtual environments or firmware credentials.
+The optional original MQTT demonstration remains available with `python scripts/run_demo.py --local-broker --port 18883`. Select Live Hardware to inspect that MQTT source; visitor Simulation stays independent. Do not run the old standalone twin against the same MQTT device at the same time as the API's MQTT adapter.
 
-The local development commands and optional unprotected localhost dashboard still work. This shared-password deployment is intended for a personal demonstration, not multi-user access management.
+References: [Render web services](https://render.com/docs/web-services), [persistent disks](https://render.com/docs/disks), [Blueprint reference](https://render.com/docs/blueprint-spec), [Streamlit reverse proxy guidance](https://docs.streamlit.io/knowledge-base/deploy/deploy-streamlit-domain-port-80).

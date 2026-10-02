@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from .models import Record
 
-TABLES = {"telemetry", "predictions", "agent_events", "calibrations", "alerts"}
+TABLES = {"telemetry", "predictions", "agent_events", "calibrations", "alerts", "transitions"}
 
 
 class Repository:
@@ -66,6 +66,18 @@ class Repository:
         if code in current:
             del current[code]
             self.set("active_alerts", current)
+
+    def prune(self, max_rows: int = 1000) -> None:
+        """Bound ephemeral visitor history; durable hardware records are not pruned here."""
+        if max_rows < 1:
+            raise ValueError("History limit must be positive")
+        with self.db:
+            for table in TABLES:
+                self.db.execute(
+                    f"DELETE FROM {table} WHERE id NOT IN "
+                    f"(SELECT id FROM {table} ORDER BY id DESC LIMIT ?)",
+                    (max_rows,),
+                )
 
     def close(self) -> None:
         self.db.close()

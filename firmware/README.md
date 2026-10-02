@@ -1,5 +1,14 @@
 # ESP32 firmware
 
+## Choose a transport
+
+- **Render / Internet:** use `smart_cooling_http/smart_cooling_http.ino`. It sends HTTPS telemetry and applies the deterministic command returned in the response. Copy its `config.example.h` to ignored `config.h`, configure `BACKEND_URL`, matching backend `HARDWARE_API_TOKEN` and `DEVICE_ID`, Wi-Fi credentials, and the trusted root CA for your backend. The placeholder CA intentionally refuses connections until replaced. Never use `setInsecure()`. The HTTP sketch uses Arduino-ESP32 3.x, ArduinoJson 7.x, and the Adafruit DHT libraries; PubSubClient is not needed. Compile with `arduino-cli compile --fqbn esp32:esp32:esp32 firmware/smart_cooling_http`.
+- **Existing LAN MQTT setup:** keep `smart_cooling/smart_cooling.ino` and follow the instructions below. The new API supports this source through `HARDWARE_TRANSPORT=MQTT`.
+
+Both sketches sample every two seconds, use NTP timestamps, report the actual PWM setting, validate device identity and command expiry, and keep a local five-second command watchdog plus a 40 °C override. The backend cannot disable those safeguards. Optional `servo_angle` telemetry is supported by the shared API, but these sketches drive the existing fan rather than an unconfigured servo. See [HTTP contract](../docs/HTTP_API.md).
+
+## Original MQTT firmware
+
 ## Dependencies
 
 - Arduino IDE 2.x or Arduino CLI

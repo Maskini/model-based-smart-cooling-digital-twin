@@ -42,7 +42,11 @@ class SupervisorTools:
 
     def evaluate_model_health(self) -> ModelHealth:
         state = self.twin.state
-        if not state.device_online or not state.mqtt_connected or state.state == SystemState.FAULT:
+        if (
+            not state.device_online
+            or not state.connection_healthy
+            or state.state == SystemState.FAULT
+        ):
             return ModelHealth.FAULT
         metrics = state.metrics
         if metrics.samples < 10:
@@ -69,7 +73,7 @@ class SupervisorTools:
         return self.twin.safety.authorize(
             action,
             s.device_online
-            and s.mqtt_connected
+            and s.connection_healthy
             and s.state not in (SystemState.FAULT, SystemState.OVERHEATING),
         )
 
@@ -172,7 +176,10 @@ class TwinSupervisorAgent:
         alerts = []
         if health == ModelHealth.FAULT:
             alerts.append(
-                ("DEVICE_HEALTH", "Telemetry, sensor or MQTT health failed; safe fallback active")
+                (
+                    "DEVICE_HEALTH",
+                    "Telemetry, sensor or connection health failed; safe fallback active",
+                )
             )
         else:
             self.tools.twin.repository.resolve_alert("DEVICE_HEALTH")
