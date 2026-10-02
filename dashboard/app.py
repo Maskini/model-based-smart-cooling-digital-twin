@@ -1,6 +1,7 @@
 """One API-backed portfolio dashboard for live hardware and isolated visitor simulations."""
 
 from datetime import datetime, timezone
+from html import escape
 import hashlib
 import os
 from pathlib import Path
@@ -57,6 +58,8 @@ def request(method: str, path: str, data: dict | None = None, token: str = ""):
         return api.request(method, path, token=token, data=data)
     except APIError as exc:
         st.error(str(exc))
+        if exc.status == 0 or (method == "GET" and exc.status >= 500):
+            st.caption("● Backend unavailable — live reception status cannot be confirmed.")
         if exc.status == 404 and path.startswith("/api/simulations/"):
             st.session_state.pop("simulation_session", None)
             st.info("Your demo session expired. Use “Reconnect / new session” to begin again.")
@@ -228,11 +231,50 @@ def utc_time(value):
     )
 
 
+def reception_status(current, compact=False):
+    connection = current["connection"]
+    activity = connection["activity"]
+    labels = {
+        "RECEIVING": "Data receiving",
+        "PAUSED": "Simulation paused",
+        "WAITING": "Waiting for data",
+        "DELAYED": "Data delayed",
+        "OFFLINE": "Data offline",
+    }
+    tone = "good" if activity == "RECEIVING" else "bad" if activity == "OFFLINE" else "idle"
+    transport = connection["transport"]
+    link = "CONNECTED" if connection["connected"] else "DISCONNECTED"
+    if transport == "SIMULATION":
+        link = "RUNNING" if activity == "RECEIVING" else activity
+    age = connection["age_seconds"]
+    age_text = f"{age:.0f}s ago" if age is not None else "No packets yet"
+    if compact:
+        st.html(
+            f'<div class="connection-strip"><span>◉ {transport} Status: <b class="status-pill {tone}">{link}</b></span><span>⚙ Mode: <b class="status-pill">{escape(current["control"]["mode"])}</b></span><span class="{tone}"><i class="signal-dot {"pulse" if activity == "RECEIVING" else ""}"></i>{labels[activity]}</span></div>'
+        )
+    else:
+        st.html(
+            f'<div class="telemetry-bar"><span>◷ Last Update: <b>{utc_time(current["last_update"])}</b> · {age_text}</span><span>▣ {transport}: {escape(connection["endpoint"])}</span><span class="{tone}"><i class="signal-dot {"pulse" if activity == "RECEIVING" else ""}"></i>{labels[activity]}</span></div>'
+        )
+        with st.expander("Connection details"):
+            st.write("Device ID:", connection["device_id"])
+            st.write("Samples received this session:", connection["received_samples"])
+            st.caption(
+                f"Expected sample interval: {connection['expected_interval_seconds']}s · Offline timeout: {connection['timeout_seconds']:g}s. Reception is based on accepted sensor timestamps, not dashboard refreshes."
+            )
+            if transport == "MQTT" and owner_authenticated():
+                st.text(f"Broker: {config.mqtt_host}:{config.mqtt_port} · TLS: {config.mqtt_tls}")
+            st.caption(
+                "A connected broker does not guarantee fresh device data. Sensor faults are reported separately in System State."
+            )
+
+
 @st.fragment(run_every=2)
 def live_view():
     current = request("GET", base + "/state", token=token)
     if not current:
         return
+    reception_status(current, compact=True)
     state, telemetry = current["state"], current["state"]["telemetry"] or {}
     simulation = current["simulation"]
     cooling = state["fan_command"] > 0
@@ -367,6 +409,35 @@ def live_view():
                     label.caption(name.replace("_", " "))
                     number.markdown(f"**{value:.4f}**")
             st.caption(f"Model health: {state['model_health']}")
+            st.write(
+                "Ambient Temperature",
+                f"{telemetry['ambient_temperature']:.1f} °C"
+                if telemetry.get("ambient_temperature") is not None
+                else "—",
+            )
+            calibration_allowed = (
+                (mode == "Simulation" or owner_authenticated())
+                and not paused
+                and state["state"] not in ("FAULT", "OVERHEATING")
+            )
+            if st.button(
+                "Run Calibration", type="primary", width="stretch", disabled=not calibration_allowed
+            ):
+                result = request("POST", base + "/calibration", token=token)
+                if result:
+                    st.session_state["calibration_feedback_" + base] = result
+                    st.rerun()
+            feedback = st.session_state.get("calibration_feedback_" + base)
+            if feedback:
+                st.info(feedback["result"]["reason"])
+                if feedback["pending_verification"]:
+                    st.caption(
+                        "Candidate applied; supervisor is verifying fresh data and can roll it back."
+                    )
+            if not calibration_allowed:
+                st.caption(
+                    "Calibration requires owner access in Live mode and a running, healthy source below the safety limit."
+                )
             st.caption(
                 "Calibration is evaluated automatically by the supervisor when safe, informative data is available."
             )
@@ -465,6 +536,8 @@ def live_view():
         st.json(current["analysis"]["alerts"])
         st.subheader("Recent calibrations")
         st.json(current["calibrations"])
+
+    reception_status(current)
 
 
 live_view()

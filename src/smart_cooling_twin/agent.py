@@ -229,6 +229,18 @@ class TwinSupervisorAgent:
                 status="REJECTED",
             )
             return
+        self.run_calibration(now, "Sustained rolling MAE above 0.06 °C")
+
+    def run_calibration(self, now: float, reason: str = "Requested from dashboard"):
+        if not self.enabled:
+            raise ValueError("Supervisor is disabled")
+        if self.pending:
+            raise ValueError("A calibration is awaiting fresh-data verification")
+        if now - self.last_calibration < self.cooldown:
+            raise ValueError("Calibration cooldown is active; collect more fresh data")
+        if not self.tools._allowed(AgentAction(kind="CALIBRATE")):
+            raise ValueError("Calibration requires healthy telemetry and a safe device state")
+        obs = self.observe(now)
         self.last_calibration = now
         current_forecast = self.tools.run_forecast()
         maximum_forecast = self.tools.run_forecast(100)
@@ -240,9 +252,7 @@ class TwinSupervisorAgent:
             f"60 s forecast: current={current_forecast}, maximum={maximum_forecast}",
         )
         self.tools.twin.state.model_health = ModelHealth.CALIBRATING
-        self.record(
-            obs, "CALIBRATION_INITIATED", "Sustained rolling MAE above 0.06 °C", "CALIBRATE"
-        )
+        self.record(obs, "CALIBRATION_INITIATED", reason, "CALIBRATE")
         result = self.tools.request_calibration(now)
         self.tools.twin.repository.append("calibrations", result)
         self.record(
@@ -269,6 +279,10 @@ class TwinSupervisorAgent:
         else:
             self.record(obs, "CANDIDATE_REJECTED", result.reason, "CALIBRATE", status="REJECTED")
         self._save()
+        return {
+            "result": result.model_dump(mode="json"),
+            "pending_verification": bool(self.pending),
+        }
 
     def _verify(self, obs: AgentObservation):
         now = obs.timestamp

@@ -2,7 +2,7 @@
 
 Verified locally with Python 3.12.14:
 
-- Full suite: **52 tests passed**, including actual TCP MQTT broker restart and delayed startup.
+- Full suite: **54 tests passed**, including actual TCP MQTT broker restart and delayed startup.
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
 - GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
@@ -10,6 +10,7 @@ Verified locally with Python 3.12.14:
 - Dashboard tests verified private password gating, isolated simulation controls, live read-only mode, and backend failure handling.
 - API tests verified hardware authentication, stale/replayed telemetry rejection, offline recovery, owner control safety overrides, session isolation/expiry, pause/reset, and diagnostic-only AI responses.
 - The shared MQTT adapter passed a real-broker integration test.
+- Reception tests verify packet freshness, delayed/offline/recovery states, paused simulation, and sample counts independent of dashboard polling. Manual calibration tests verify authentication, safety, cooldown and insufficient-data rejection.
 - The guided scenario completed in the browser: normal → heating → overheating → recovery → cooling off.
 - Simulator, twin, development broker and Streamlit ran as separate processes with LLM disabled.
 - Live browser inspection confirmed incoming physical state, model metrics, charts and agent health.

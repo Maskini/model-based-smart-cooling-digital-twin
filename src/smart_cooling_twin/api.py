@@ -204,6 +204,23 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         context.set_control(control, clock())
         return context.snapshot(clock())
 
+    def calibrate(context):
+        try:
+            return context.calibrate(clock())
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/live/calibration")
+    async def live_calibration(authorization: str | None = Header(default=None)):
+        owner(authorization)
+        return calibrate(app.state.runtime.live)
+
+    @app.post("/api/simulations/{session_id}/calibration")
+    async def simulation_calibration(
+        session_id: str, authorization: str | None = Header(default=None)
+    ):
+        return calibrate(session(session_id, authorization))
+
     last_diagnostic = [-1e12]
 
     async def diagnose(context):

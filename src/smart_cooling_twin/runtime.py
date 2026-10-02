@@ -19,6 +19,8 @@ class TwinContext:
         repository: Repository,
         mode: Literal["LIVE", "SIMULATION"],
     ):
+        self.settings = settings
+        self.received_samples = 0
         self.source, self.repository = source, repository
         self.twin = DigitalTwin(
             repository, settings.device_id, settings.telemetry_timeout, settings.agent_enabled
@@ -55,7 +57,10 @@ class TwinContext:
             self.twin.fault(now, "INVALID_TELEMETRY", "Rejected malformed device telemetry")
             records = []
         for record in records:
+            previous_telemetry = self.twin.state.telemetry
             command = self.twin.receive(record, now)
+            if self.twin.state.telemetry is not previous_telemetry:
+                self.received_samples += 1
             if command:
                 self.source.send_command(command, now)
         command = self.twin.tick(now)
@@ -82,6 +87,49 @@ class TwinContext:
         self.twin.clear_predictions()
         self.source.last_sample = None
 
+    def calibrate(self, now: float) -> dict:
+        self.step(now)
+        if isinstance(self.source, SimulationSensorSource) and not self.source.running:
+            raise ValueError("Start Simulation before requesting calibration")
+        result = self.twin.agent.run_calibration(now)
+        self.twin.persist(now)
+        return result
+
+    def connection(self, now: float) -> dict:
+        sim = isinstance(self.source, SimulationSensorSource)
+        transport = (
+            "SIMULATION" if sim else "MQTT" if isinstance(self.source, MqttSensorSource) else "REST"
+        )
+        received = self.twin.last_received
+        age = max(0, now - received) if received is not None else None
+        connected = self.source.connected(now)
+        if sim and not self.source.running:
+            activity = "PAUSED"
+        elif age is None:
+            activity = "WAITING"
+        elif not connected or age > self.settings.telemetry_timeout:
+            activity = "OFFLINE"
+        elif age > min(5, self.settings.telemetry_timeout):
+            activity = "DELAYED"
+        else:
+            activity = "RECEIVING"
+        return {
+            "transport": transport,
+            "connected": connected,
+            "activity": activity,
+            "last_received": received,
+            "age_seconds": age,
+            "received_samples": self.received_samples,
+            "device_id": self.settings.device_id,
+            "expected_interval_seconds": 2,
+            "timeout_seconds": self.settings.telemetry_timeout,
+            "endpoint": "Local physics model"
+            if sim
+            else "Configured MQTT broker"
+            if transport == "MQTT"
+            else "/api/devices/{device_id}/telemetry",
+        }
+
     def snapshot(self, now: float) -> dict:
         self.step(now)
         analysis = explain_state(self.twin)
@@ -90,6 +138,7 @@ class TwinContext:
         sim = self.source if isinstance(self.source, SimulationSensorSource) else None
         return {
             "timestamp": now,
+            "connection": self.connection(now),
             "operating_mode": self.twin.state.operating_mode,
             "state": self.twin.state.model_dump(mode="json"),
             "last_update": t.timestamp if t else None,

@@ -261,3 +261,55 @@ def test_optional_ai_is_validated_rate_limited_and_never_controls_hardware(tmp_p
         key, headers = create_session(client)
         assert client.post(f"/api/simulations/{key}/analysis", headers=headers).status_code == 502
         assert client.get("/api/health").status_code == 200
+
+
+def test_reception_status_tracks_packets_not_dashboard_refreshes(api):
+    client, now = api
+    assert client.get("/api/live/state").json()["connection"]["activity"] == "WAITING"
+    headers = {"Authorization": "Bearer device-secret"}
+    client.post("/api/devices/cooling-01/telemetry", json=reading(), headers=headers)
+    connection = client.get("/api/live/state").json()["connection"]
+    assert connection["activity"] == "RECEIVING"
+    assert connection["received_samples"] == 1
+    now[0] += 6
+    delayed = client.get("/api/live/state").json()["connection"]
+    assert delayed["activity"] == "DELAYED"
+    assert delayed["received_samples"] == 1
+    assert delayed["last_received"] == 1000
+    now[0] += 5
+    assert client.get("/api/live/state").json()["connection"]["activity"] == "OFFLINE"
+    client.post("/api/devices/cooling-01/telemetry", json=reading(now[0]), headers=headers)
+    assert client.get("/api/live/state").json()["connection"]["received_samples"] == 2
+    sid, auth = create_session(client)
+    path = f"/api/simulations/{sid}"
+    assert client.get(path + "/state", headers=auth).json()["connection"]["activity"] == "PAUSED"
+    client.post(path + "/actions", json={"action": "START"}, headers=auth)
+    assert client.get(path + "/state", headers=auth).json()["connection"]["activity"] == "RECEIVING"
+    client.post(path + "/actions", json={"action": "STOP"}, headers=auth)
+    now[0] += 20
+    assert client.get(path + "/state", headers=auth).json()["connection"]["activity"] == "PAUSED"
+
+
+def test_manual_calibration_auth_safety_and_insufficient_data(api):
+    client, now = api
+    assert client.post("/api/live/calibration").status_code == 401
+    assert (
+        client.post(
+            "/api/live/calibration", headers={"Authorization": "Bearer owner-secret"}
+        ).status_code
+        == 409
+    )
+    sid, auth = create_session(client)
+    path = f"/api/simulations/{sid}"
+    assert client.post(path + "/calibration").status_code == 401
+    assert client.post(path + "/calibration", headers=auth).status_code == 409
+    client.post(path + "/actions", json={"action": "START"}, headers=auth)
+    before = client.get(path + "/state", headers=auth).json()["parameters"]
+    result = client.post(path + "/calibration", headers=auth)
+    assert result.status_code == 200
+    assert result.json()["pending_verification"] is False
+    assert client.get(path + "/state", headers=auth).json()["parameters"] == before
+    assert client.post(path + "/calibration", headers=auth).status_code == 409
+    now[0] += 181
+    client.post(path + "/actions", json={"action": "OVERHEAT"}, headers=auth)
+    assert client.post(path + "/calibration", headers=auth).status_code == 409
