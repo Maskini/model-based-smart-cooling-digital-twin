@@ -74,3 +74,14 @@ streamlit run dashboard/app.py --server.address=127.0.0.1 --server.headless=true
 The optional original MQTT demonstration remains available with `python scripts/run_demo.py --local-broker --port 18883`. Select Live Hardware to inspect that MQTT source; visitor Simulation stays independent. Do not run the old standalone twin against the same MQTT device at the same time as the API's MQTT adapter.
 
 References: [Render web services](https://render.com/docs/web-services), [persistent disks](https://render.com/docs/disks), [Blueprint reference](https://render.com/docs/blueprint-spec), [Streamlit reverse proxy guidance](https://docs.streamlit.io/knowledge-base/deploy/deploy-streamlit-domain-port-80).
+
+
+## Free portfolio deployment
+
+Use `render-free.yaml` for a Free Render web service; `render.yaml` retains the paid disk-backed option. The free configuration runs the same dashboard and API, defaults to public Simulation, disables external AI calls, and does not request a paid disk.
+
+In Render, create a Blueprint from this GitHub repository and select branch `codex/implement-digital-twin` and Blueprint path `render-free.yaml`. Confirm that the proposed service has the **Free** instance type and no disk before deploying. If using manual Web Service creation instead, select Docker, the same branch, Free instance type, and the environment variables from `render-free.yaml`.
+
+Render Free sleeps after 15 idle minutes; waking normally takes about one minute. Local SQLite history and simulation sessions reset on restart, redeployment or sleep. Free usage quotas apply; bandwidth/build overages may be billed if a payment method is present. Without a payment method, limits suspend services/builds instead. Review the workspace billing settings to keep the demo at zero cost. See [Render Free documentation](https://render.com/docs/free).
+
+Use this for the portfolio demonstration. Continuous hardware monitoring with retained history needs durable storage and a suitable always-on service. Once deployed, add the actual public URL to the GitHub repository's Website field and README; do not substitute the local `127.0.0.1` address.
