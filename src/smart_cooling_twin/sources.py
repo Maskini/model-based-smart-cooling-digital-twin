@@ -83,8 +83,8 @@ class SimulationSensorSource:
         self._phase("NORMAL", now, "Normal temperature: the system is stable and cooling is off.")
 
     def _advance_demo(self, now: float) -> None:
-        if self.phase == "NORMAL" and now - self.phase_since >= 4:
-            self.system.settings.heat_load = 1.2
+        if self.phase == "NORMAL" and now - self.phase_since >= 2:
+            self.system.settings.heat_load = 1.9
             self._phase(
                 "HEATING",
                 now,
@@ -98,7 +98,7 @@ class SimulationSensorSource:
             )
         elif self.phase == "OVERHEATING" and now - self.phase_since >= 2:
             self.system.settings.heat_load = 0
-            self.system.settings.fan_effectiveness = 1
+            self.system.settings.fan_effectiveness = 1.5
             self._phase(
                 "RECOVERING",
                 now,

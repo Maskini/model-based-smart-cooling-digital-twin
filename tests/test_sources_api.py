@@ -119,6 +119,7 @@ def test_demo_traverses_overheating_and_recovers(tmp_path):
         if context.source.phase == "COMPLETE":
             break
     assert context.source.phase == "COMPLETE"
+    assert now - 1002 <= 30  # Portfolio demo completes without a long wait.
     assert "OVERHEATING" in states
     assert max(temperatures) >= 40
     assert 100 in commands
