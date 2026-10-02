@@ -4,7 +4,7 @@
 header[data-testid="stHeader"] {background:transparent; height:0;}
 .brand {display:flex; align-items:center; gap:20px; padding:8px 0 20px; border-bottom:1px solid #23374c; margin-bottom:14px;}
 .brand-icon {display:flex; width:56px; height:56px; flex:0 0 56px; align-items:center;}
-.brand-icon svg {display:block; width:100%; height:100%;}
+.brand-icon img {display:block; width:100%; height:100%;}
 .brand h1 {font-size:clamp(21px,2vw,34px); font-weight:700; margin:0; padding:0; letter-spacing:-.5px;}
 .brand h1 span {color:#d3dfef;}
 .brand p {color:#7891ab; font-size:10px; letter-spacing:2px; margin:8px 0 0;}

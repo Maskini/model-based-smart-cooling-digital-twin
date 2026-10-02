@@ -1,5 +1,6 @@
 """One API-backed portfolio dashboard for live hardware and isolated visitor simulations."""
 
+from base64 import b64encode
 from datetime import datetime, timezone
 from html import escape
 import hashlib
@@ -24,11 +25,11 @@ if not config.public_demo:
     require_dashboard_access()
 
 st.html((Path(__file__).with_name("style.css")).read_text())
-fan_icon = (Path(__file__).parent / "assets" / "fan.svg").read_text()
+fan_icon = b64encode((Path(__file__).parent / "assets" / "fan.svg").read_bytes()).decode()
 st.html(
-    '<div class="brand"><span class="brand-icon">'
+    '<div class="brand"><span class="brand-icon"><img alt="" src="data:image/svg+xml;base64,'
     + fan_icon
-    + "</span><div><h1>Model-Based Digital Twin <span>— Smart Cooling System</span></h1><p>LIVE SENSING · PREDICTIVE MODEL · AUTONOMOUS SUPERVISOR</p></div></div>",
+    + '"></span><div><h1>Model-Based Digital Twin <span>— Smart Cooling System</span></h1><p>LIVE SENSING · PREDICTIVE MODEL · AUTONOMOUS SUPERVISOR</p></div></div>',
 )
 mode_column, intro_column = st.columns([1, 2.8], vertical_alignment="center")
 with mode_column:
