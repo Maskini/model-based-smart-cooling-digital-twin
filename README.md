@@ -10,6 +10,12 @@ A portfolio-ready cyber-physical application with **Live Hardware** and **Simula
 
 Choose **Simulation → Run Demo Scenario** to see overheating detection, cooling and recovery without hardware or a server wake-up. The GitHub Pages dashboard runs simulation locally in JavaScript; its data stays in the tab and resets on reload. Live Hardware connects to the existing Render API and can still experience a cold start. The [Python dashboard](https://smart-cooling-twin-demo.onrender.com/) remains available.
 
+## Dashboard preview
+
+[![Current dashboard in Simulation mode with cooling active and measured versus predicted temperature](docs/assets/dashboard-current.png)](https://maskini.github.io/model-based-smart-cooling-digital-twin/)
+
+Captured from the running browser demo. Values shown are simulated.
+
 ## Try it locally — Python 3.11+
 
 ```bash
