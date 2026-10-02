@@ -4,6 +4,12 @@ A portfolio-ready cyber-physical application with **Live Hardware** and **Simula
 
 **Made by Maskini · © 2026 Maskini**
 
+## Live portfolio demo
+
+**[Open the Smart Cooling Digital Twin](https://smart-cooling-twin-demo.onrender.com)**
+
+Choose **Simulation → Run Demo Scenario** to see overheating detection, cooling and recovery without hardware. Hosted on Render Free: after inactivity, the first visit can take about a minute to wake the app. Demo sessions and local history reset when the service restarts.
+
 ## Try it locally — Python 3.11+
 
 ```bash

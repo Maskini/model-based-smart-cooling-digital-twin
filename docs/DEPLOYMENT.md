@@ -85,3 +85,10 @@ In Render, create a Blueprint from this GitHub repository and select branch `cod
 Render Free sleeps after 15 idle minutes; waking normally takes about one minute. Local SQLite history and simulation sessions reset on restart, redeployment or sleep. Free usage quotas apply; bandwidth/build overages may be billed if a payment method is present. Without a payment method, limits suspend services/builds instead. Review the workspace billing settings to keep the demo at zero cost. See [Render Free documentation](https://render.com/docs/free).
 
 Use this for the portfolio demonstration. Continuous hardware monitoring with retained history needs durable storage and a suitable always-on service. Once deployed, add the actual public URL to the GitHub repository's Website field and README; do not substitute the local `127.0.0.1` address.
+
+
+## Active portfolio service
+
+Public URL: https://smart-cooling-twin-demo.onrender.com
+
+Created from `render-free.yaml` on branch `codex/implement-digital-twin`. Render confirms Docker / Free. Automatic application deployments are off; use Render Manual Deploy after code updates. The public simulation, offline live state, hardware authentication and safety response have been checked against the hosted API.
