@@ -68,7 +68,9 @@ class Controller:
 
     def command(self, state: SystemState, temperature: float | None) -> float:
         cfg = self.settings
-        if cfg.mode == "MANUAL":
+        if state == SystemState.OFF:
+            desired = 0
+        elif cfg.mode == "MANUAL":
             desired = cfg.manual_fan
         elif state == SystemState.COOLING and temperature is not None:
             desired = 20 + 20 * (temperature - cfg.setpoint)

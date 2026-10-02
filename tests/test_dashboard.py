@@ -54,3 +54,18 @@ def test_dashboard_backend_failure_has_reconnect_message(monkeypatch):
     assert not app.exception
     assert any("unavailable" in e.value for e in app.error)
     assert button(app, "Reconnect / new session")
+
+
+def test_manual_buttons_and_demo_reset_keep_display_consistent(dashboard_backend):
+    app = AppTest.from_file(str(APP)).run()
+    button(app, "Start Simulation").click().run()
+    button(app, "Fan ON").click().run()
+    assert not app.exception
+    assert any(m.label == "Fan Command" and "100%" in m.value for m in app.metric)
+    button(app, "Fan OFF").click().run()
+    assert any(m.label == "Fan Command" and "0%" in m.value for m in app.metric)
+    button(app, "Run Demo Scenario").click().run()
+    assert not app.exception
+    assert next(r for r in app.radio if r.label == "Control mode").value == "AUTO"
+    button(app, "Stop Simulation").click().run()
+    assert any(m.label == "Fan Command" and m.value == "PAUSED" for m in app.metric)

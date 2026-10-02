@@ -50,6 +50,7 @@ class DigitalTwin:
 
     def clear_predictions(self):
         self.pending.clear()
+        self.state.prediction = None
         self.validator = ModelValidator()
         self.state.metrics = self.state.metrics.__class__()
 

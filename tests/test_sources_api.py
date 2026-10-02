@@ -313,3 +313,82 @@ def test_manual_calibration_auth_safety_and_insufficient_data(api):
     now[0] += 181
     client.post(path + "/actions", json={"action": "OVERHEAT"}, headers=auth)
     assert client.post(path + "/calibration", headers=auth).status_code == 409
+
+
+def test_sensor_fault_remains_connected_but_invalidates_prediction(api):
+    client, now = api
+    headers = {"Authorization": "Bearer device-secret"}
+    client.post("/api/devices/cooling-01/telemetry", json=reading(), headers=headers)
+    assert client.get("/api/live/state").json()["state"]["prediction"] is not None
+    now[0] += 2
+    client.post(
+        "/api/devices/cooling-01/telemetry", json=reading(now[0], sensor_ok=False), headers=headers
+    )
+    snapshot = client.get("/api/live/state").json()
+    assert snapshot["device_status"] == "Online"
+    assert snapshot["connection"]["activity"] == "RECEIVING"
+    assert snapshot["state"]["state"] == "FAULT"
+    assert snapshot["state"]["fan_command"] == 100
+    assert snapshot["state"]["prediction"] is None
+
+
+def test_control_change_ends_demo_and_power_off_blocks_normal_manual_demand(api):
+    client, now = api
+    sid, auth = create_session(client)
+    path = f"/api/simulations/{sid}"
+    client.post(path + "/actions", json={"action": "DEMO"}, headers=auth)
+    result = client.put(
+        path + "/control", json={"mode": "MANUAL", "manual_fan": 100, "setpoint": 30}, headers=auth
+    )
+    assert result.json()["simulation"]["phase"] == "IDLE"
+    now[0] += 2
+    client.post(path + "/actions", json={"action": "STOP"}, headers=auth)
+    result = client.put(
+        path + "/control", json={"mode": "MANUAL", "manual_fan": 100, "setpoint": 30}, headers=auth
+    )
+    assert result.json()["state"]["fan_command"] == 0
+    assert result.json()["state"]["state"] == "OFF"
+
+
+def test_calibration_rechecks_timeout_inside_step_throttle(api):
+    client, now = api
+    client.post(
+        "/api/devices/cooling-01/telemetry",
+        json=reading(),
+        headers={"Authorization": "Bearer device-secret"},
+    )
+    now[0] = 1009.9
+    assert client.get("/api/live/state").json()["state"]["device_online"] is True
+    now[0] = 1010.1
+    result = client.post("/api/live/calibration", headers={"Authorization": "Bearer owner-secret"})
+    assert result.status_code == 409
+    state = client.get("/api/live/state").json()["state"]
+    assert state["state"] == "FAULT"
+    assert state["prediction"] is None
+
+
+def test_mqtt_offline_event_discards_earlier_queued_reading():
+    from smart_cooling_twin.sources import MqttSensorSource, Esp32SensorSource
+    from smart_cooling_twin.mqtt import TELEMETRY, STATUS
+    from smart_cooling_twin.models import Telemetry
+    import json
+
+    class Transport:
+        events = [
+            (TELEMETRY, Telemetry(**reading()).model_dump_json().encode()),
+            (
+                STATUS,
+                json.dumps({"device_id": "cooling-01", "online": False}).encode(),
+            ),
+        ]
+
+        def drain(self):
+            events, self.events = self.events, []
+            return events
+
+    source = MqttSensorSource.__new__(MqttSensorSource)
+    Esp32SensorSource.__init__(source, "cooling-01")
+    source.transport = Transport()
+    with pytest.raises(ValueError, match="offline"):
+        source.poll(1000)
+    assert source.poll(1001) == []

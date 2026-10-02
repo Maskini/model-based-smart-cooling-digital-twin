@@ -2,7 +2,7 @@
 
 Verified locally with Python 3.12.14:
 
-- Full suite: **54 tests passed**, including actual TCP MQTT broker restart and delayed startup.
+- Full suite: **59 tests passed**, including actual TCP MQTT broker restart and delayed startup.
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
 - GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
@@ -17,6 +17,10 @@ Verified locally with Python 3.12.14:
 - Dashboard AppTest verified control submission, sensor fault settings and hidden simulation controls in hardware mode.
 - Running MQTT demo autonomously accepted a calibration and verified fresh-data MAE improvement from **0.29106 °C to 0.02378 °C**. This is one observed demonstration, not an accuracy guarantee.
 - `.env`, hardware `config.h`, SQLite databases and the virtual environment are excluded by Git.
+
+## Functional review
+
+Regression checks cover sensor faults with an intact connection, expired prediction removal, calibration requests at the telemetry timeout boundary, manual control interrupting a demo, zero normal demand when powered off, dashboard manual/demo/stop transitions, and MQTT offline events discarding queued readings.
 
 ## HTTPS firmware compilation
 

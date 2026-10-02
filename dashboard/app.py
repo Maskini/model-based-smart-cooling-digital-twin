@@ -216,6 +216,8 @@ def render_actions():
         ):
             result = request("POST", base + "/actions", {"action": action}, token)
             if result:
+                if action in ("RESET", "DEMO"):
+                    st.session_state.pop("calibration_feedback_" + base, None)
                 # Refresh editable defaults after a reset rather than retaining prior widget values.
                 for key in list(st.session_state):
                     if key.startswith("sim_edit_"):
@@ -429,10 +431,10 @@ def live_view():
                     st.rerun()
             feedback = st.session_state.get("calibration_feedback_" + base)
             if feedback:
-                st.info(feedback["result"]["reason"])
+                st.info("Last calibration request: " + feedback["result"]["reason"])
                 if feedback["pending_verification"]:
                     st.caption(
-                        "Candidate applied; supervisor is verifying fresh data and can roll it back."
+                        "This request applied a candidate for verification. See Supervisor history for its latest outcome."
                     )
             if not calibration_allowed:
                 st.caption(

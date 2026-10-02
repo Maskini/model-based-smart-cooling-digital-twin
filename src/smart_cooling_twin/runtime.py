@@ -70,6 +70,8 @@ class TwinContext:
             self.last_prune = now
 
     def set_control(self, control: ControlSettings, now: float) -> None:
+        if isinstance(self.source, SimulationSensorSource):
+            self.source.phase = "IDLE"
         self.twin.controller.settings = control
         self.repository.set("control", control.model_dump())
         # Re-evaluate safe settings against current telemetry, without fabricating a new reading.
@@ -88,9 +90,9 @@ class TwinContext:
         self.source.last_sample = None
 
     def calibrate(self, now: float) -> dict:
-        self.step(now)
         if isinstance(self.source, SimulationSensorSource) and not self.source.running:
             raise ValueError("Start Simulation before requesting calibration")
+        self.step(now, force=True)
         result = self.twin.agent.run_calibration(now)
         self.twin.persist(now)
         return result
@@ -136,14 +138,17 @@ class TwinContext:
         analysis["llm"] = self.diagnostic
         t = self.twin.state.telemetry
         sim = self.source if isinstance(self.source, SimulationSensorSource) else None
+        connection = self.connection(now)
         return {
             "timestamp": now,
-            "connection": self.connection(now),
+            "connection": connection,
             "operating_mode": self.twin.state.operating_mode,
             "state": self.twin.state.model_dump(mode="json"),
             "last_update": t.timestamp if t else None,
             "last_received": self.twin.last_received,
-            "device_status": "Online" if self.twin.state.device_online else "Offline",
+            "device_status": "Online"
+            if connection["activity"] in ("RECEIVING", "DELAYED")
+            else "Offline",
             "parameters": self.twin.model.parameters.model_dump(),
             "control": self.twin.controller.settings.model_dump(),
             "analysis": analysis,

@@ -166,11 +166,13 @@ class MqttSensorSource(Esp32SensorSource):
                     if record.device_id == self.device_id:
                         self.ingest(record, now)
                 except ValidationError as exc:
+                    self.pending.clear()
                     raise ValueError("Malformed MQTT telemetry") from exc
             elif topic == STATUS:
                 try:
                     status = DeviceStatus.model_validate_json(payload)
                     if status.device_id == self.device_id and not status.online:
+                        self.pending.clear()
                         raise ValueError("Device reported offline")
                 except ValidationError:
                     continue
