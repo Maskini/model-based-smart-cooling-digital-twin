@@ -2,7 +2,7 @@
 
 Verified locally with Python 3.12.14:
 
-- Full suite: **59 tests passed**, including actual TCP MQTT broker restart and delayed startup.
+- Full suite: **60 tests passed**, including actual TCP MQTT broker restart and delayed startup.
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
 - GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
@@ -17,6 +17,10 @@ Verified locally with Python 3.12.14:
 - Dashboard AppTest verified control submission, sensor fault settings and hidden simulation controls in hardware mode.
 - Running MQTT demo autonomously accepted a calibration and verified fresh-data MAE improvement from **0.29106 °C to 0.02378 °C**. This is one observed demonstration, not an accuracy guarantee.
 - `.env`, hardware `config.h`, SQLite databases and the virtual environment are excluded by Git.
+
+## Browser dashboard
+
+Seven Node tests cover the static browser frontend core. Parity fixtures are generated from Python for 2,376 state/controller combinations and 45 thermal integrations. Tests also cover guided demo completion, sensor faults, manual overrides, pause/reset, invalid inputs, and calibration holdout acceptance with fresh-data verification. The API restricts browser access to the configured GitHub Pages origin and still requires authentication for owner actions.
 
 ## Functional review
 

@@ -92,3 +92,8 @@ Use this for the portfolio demonstration. Continuous hardware monitoring with re
 Public URL: https://smart-cooling-twin-demo.onrender.com
 
 Created from `render-free.yaml` on branch `codex/implement-digital-twin`. Render confirms Docker / Free. Automatic application deployments are off; use Render Manual Deploy after code updates. The public simulation, offline live state, hardware authentication and safety response have been checked against the hosted API.
+
+
+## Instant browser frontend
+
+The primary portfolio entry point is https://maskini.github.io/model-based-smart-cooling-digital-twin/ . GitHub Pages serves the root of `codex/pages`, generated from the `web/` directory. Simulation needs no backend requests and has no server wake-up delay. Live mode uses the existing Render API, which retains its Free-plan cold start. Set `CORS_ORIGINS` to the browser frontend origin (default `https://maskini.github.io`); API owner/device authentication remains mandatory. See [browser architecture and publishing instructions](../web/README.md).
