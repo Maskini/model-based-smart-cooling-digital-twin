@@ -21,6 +21,7 @@ class Settings(Record):
     admin_api_token: str = ""
     hardware_transport: Literal["REST", "MQTT"] = "REST"
     public_demo: bool = True
+    cors_origins: str = "https://maskini.github.io"
     simulation_start_temperature: float = Field(default=27, ge=-40, le=60)
     simulation_humidity: float = Field(default=47, ge=0, le=100)
     simulation_heat_load: float = Field(default=0.12, ge=0, le=2)

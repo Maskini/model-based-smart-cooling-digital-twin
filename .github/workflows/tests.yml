@@ -12,6 +12,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python scripts/browser_parity.py
+      - run: node --test tests/browser/core.test.mjs
       - run: pytest -q
       - run: ruff check src simulator dashboard tests scripts
       - run: ruff format --check src simulator dashboard tests scripts

@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from .config import Settings
 from .models import ControlSettings, SimulationAction, SimulationControls, Telemetry
 from .runtime import TwinRuntime
@@ -263,6 +264,15 @@ def create_app(settings: Settings | None = None, clock: Callable[[], float] = ti
         context.close()
         del app.state.runtime.sessions[session_id]
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            origin.strip() for origin in config.cors_origins.split(",") if origin.strip()
+        ],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
+        allow_credentials=False,
+    )
     return app
 
 

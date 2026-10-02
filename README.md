@@ -6,9 +6,9 @@ A portfolio-ready cyber-physical application with **Live Hardware** and **Simula
 
 ## Live portfolio demo
 
-**[Open the Smart Cooling Digital Twin](https://smart-cooling-twin-demo.onrender.com)**
+**[Open the instant browser demo](https://maskini.github.io/model-based-smart-cooling-digital-twin/)**
 
-Choose **Simulation → Run Demo Scenario** to see overheating detection, cooling and recovery without hardware. Hosted on Render Free: after inactivity, the first visit can take about a minute to wake the app. Demo sessions and local history reset when the service restarts.
+Choose **Simulation → Run Demo Scenario** to see overheating detection, cooling and recovery without hardware or a server wake-up. The GitHub Pages dashboard runs simulation locally in JavaScript; its data stays in the tab and resets on reload. Live Hardware connects to the existing Render API and can still experience a cold start. The [Python dashboard](https://smart-cooling-twin-demo.onrender.com/) remains available.
 
 ## Try it locally — Python 3.11+
 

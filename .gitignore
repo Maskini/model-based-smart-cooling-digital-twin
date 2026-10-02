@@ -173,3 +173,6 @@ firmware/secrets.h
 *.db*
 firmware/**/config.h
 .pio/
+
+# Generated from the Python reference core for browser tests
+tests/browser/parity.json

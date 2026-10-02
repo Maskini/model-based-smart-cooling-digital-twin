@@ -393,3 +393,27 @@ def test_mqtt_offline_event_discards_earlier_queued_reading():
     with pytest.raises(ValueError, match="offline"):
         source.poll(1000)
     assert source.poll(1001) == []
+
+
+def test_pages_cors_allows_only_configured_origin(api):
+    client, _ = api
+    headers = {
+        "Origin": "https://maskini.github.io",
+        "Access-Control-Request-Method": "PUT",
+        "Access-Control-Request-Headers": "authorization,content-type",
+    }
+    allowed = client.options("/api/live/control", headers=headers)
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://maskini.github.io"
+    headers["Origin"] = "https://untrusted.example"
+    rejected = client.options("/api/live/control", headers=headers)
+    assert rejected.status_code == 400
+    assert "access-control-allow-origin" not in rejected.headers
+    assert (
+        client.put(
+            "/api/live/control",
+            json={"mode": "AUTO", "manual_fan": 0, "setpoint": 30},
+            headers={"Origin": "https://maskini.github.io"},
+        ).status_code
+        == 401
+    )
