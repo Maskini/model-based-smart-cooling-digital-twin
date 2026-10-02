@@ -6,7 +6,7 @@ Verified locally with Python 3.12.14:
 - Ruff lint and formatting checks passed.
 - Python wheel built successfully from `pyproject.toml`.
 - GitHub Actions passed on Python 3.11 and 3.12, including lint and formatting.
-- The earlier MQTT deployment image built and started successfully in GitHub Actions. The current workflow additionally checks the shared API, offline live state, authentication and an isolated simulation through the public proxy.
+- The complete REST/Simulation container built and started successfully in [GitHub Actions](https://github.com/Maskini/model-based-smart-cooling-digital-twin/actions/runs/36948241936). Checks passed for the shared API, offline live state, authentication and an isolated simulation through the public proxy.
 - Dashboard tests verified private password gating, isolated simulation controls, live read-only mode, and backend failure handling.
 - API tests verified hardware authentication, stale/replayed telemetry rejection, offline recovery, owner control safety overrides, session isolation/expiry, pause/reset, and diagnostic-only AI responses.
 - The shared MQTT adapter passed a real-broker integration test.

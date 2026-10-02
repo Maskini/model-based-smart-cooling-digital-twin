@@ -1,0 +1,24 @@
+<style>
+.stApp {background:#071422; color:#e3edf9;}
+.stMainBlockContainer {max-width:2100px; padding:1.5rem 1.8rem 2rem;}
+header[data-testid="stHeader"] {background:transparent; height:0;}
+.brand {display:flex; align-items:center; gap:20px; padding:8px 0 20px; border-bottom:1px solid #23374c; margin-bottom:14px;}
+.brand-icon {font-size:54px; color:#53c9ed; line-height:1;}
+.brand h1 {font-size:clamp(21px,2vw,34px); font-weight:700; margin:0; padding:0; letter-spacing:-.5px;}
+.brand h1 span {color:#d3dfef;}
+.brand p {color:#7891ab; font-size:10px; letter-spacing:2px; margin:8px 0 0;}
+[data-testid="stVerticalBlockBorderWrapper"] > div {border-color:#20364d !important; border-radius:12px !important; background:linear-gradient(120deg,#0d2033,#0b1b2d);}
+[data-testid="stMetric"] {padding:10px 0;}
+.st-key-metric_strip [data-testid="stMetric"] {background:linear-gradient(130deg,#10273d,#0d1d30); border:1px solid #203b53; border-radius:11px; padding:20px 16px; min-height:142px;}
+.st-key-metric_strip [data-testid="stColumn"]:first-child [data-testid="stMetric"] {border-color:#2486bc; background:linear-gradient(130deg,#10304b,#0b243c);}
+.st-key-metric_strip [data-testid="stColumn"]:first-child [data-testid="stMetricValue"] {color:#53c9ed;}
+.st-key-metric_strip [data-testid="stMetricValue"] {font-size:clamp(20px,2.1vw,38px); font-weight:700;}
+[data-testid="stMetricLabel"] {color:#a9bed6; font-size:14px;}
+[data-testid="stMetricValue"] {font-size:20px;}
+h3 {font-size:21px !important; letter-spacing:-.2px;}
+.stButton button, .stFormSubmitButton button {border-radius:8px; border-color:#314963;}
+.stButton button[kind="primary"], .stFormSubmitButton button {background:#1676ec; color:white;}
+[data-testid="stForm"] {border:0; padding:0;}
+[data-testid="stCaptionContainer"] {color:#92abc4;}
+@media(max-width:900px) {.stMainBlockContainer{padding:1rem;} .brand h1 span{display:block;font-size:16px;margin-top:6px;} .st-key-metric_strip [data-testid="stHorizontalBlock"]{flex-wrap:wrap;} .st-key-metric_strip [data-testid="stColumn"]{min-width:140px;flex:1 1 140px;} .st-key-metric_strip [data-testid="stMetric"]{min-height:105px;padding:12px;}}
+</style>

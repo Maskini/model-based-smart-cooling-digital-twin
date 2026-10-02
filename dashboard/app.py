@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import hashlib
 import os
+from pathlib import Path
 import pandas as pd
 import altair as alt
 import streamlit as st
@@ -21,17 +22,20 @@ if not config.public_demo:
         st.stop()
     require_dashboard_access()
 
-st.title("❄️ Model-Based Smart Cooling Digital Twin")
-st.caption(
-    "A physical system, a predictive model, and an autonomous supervisor — connected in real time."
-)
+st.html((Path(__file__).with_name("style.css")).read_text())
 st.markdown(
-    "**Explore without hardware:** choose Simulation and run the guided scenario. "
-    "**Live Hardware:** an ESP32 sends readings over Wi-Fi/HTTPS; the backend returns safety-validated cooling commands."
+    '<div class="brand"><span class="brand-icon">✣</span><div><h1>Model-Based Digital Twin <span>— Smart Cooling System</span></h1><p>LIVE SENSING · PREDICTIVE MODEL · AUTONOMOUS SUPERVISOR</p></div></div>',
+    unsafe_allow_html=True,
 )
-mode = st.radio(
-    "Operating mode", ["Simulation", "Live Hardware"], horizontal=True, key="operating_mode"
-)
+mode_column, intro_column = st.columns([1, 2.8], vertical_alignment="center")
+with mode_column:
+    mode = st.radio(
+        "Operating mode", ["Simulation", "Live Hardware"], horizontal=True, key="operating_mode"
+    )
+with intro_column:
+    st.caption(
+        "Explore the guided simulation, or connect your ESP32 over Wi-Fi / HTTPS. Both modes use the same Digital Twin and safety controller."
+    )
 
 
 def owner_authenticated() -> bool:
@@ -59,7 +63,7 @@ def request(method: str, path: str, data: dict | None = None, token: str = ""):
         return None
 
 
-if st.button("Reconnect / new session"):
+if mode_column.button("Reconnect / new session", type="tertiary"):
     old = st.session_state.pop("simulation_session", None)
     if old:
         request("DELETE", "/api/simulations/" + old["session_id"], token=old["token"])
@@ -85,43 +89,57 @@ if mode == "Simulation":
         footer()
         st.stop()
     base, token = "/api/simulations/" + session["session_id"], session["token"]
-    st.info(
-        "SIMULATION · Your own demo session. No ESP32 is required; these controls cannot operate physical hardware."
-    )
+
 else:
     base = "/api/live"
     token = config.admin_api_token if owner_authenticated() or not config.public_demo else ""
-    st.info(
-        "LIVE · Values come from the configured ESP32. The dashboard stays available when the device is offline."
-    )
 
-snapshot = request("GET", base + "/state", token=token)
-if snapshot:
+
+def render_controls(snapshot):
     control = snapshot["control"]
-    if mode == "Simulation":
-        columns = st.columns(3)
-        actions = [
-            ("Start Simulation", "START"),
-            ("Stop Simulation", "STOP"),
-            ("Reset", "RESET"),
-            ("Increase Temperature", "INCREASE"),
-            ("Simulate Overheating", "OVERHEAT"),
-            ("Run Demo Scenario", "DEMO"),
-        ]
-        for index, (label, action) in enumerate(actions):
-            if columns[index % 3].button(
-                label, type="primary" if action == "DEMO" else "secondary", width="stretch"
-            ):
-                result = request("POST", base + "/actions", {"action": action}, token)
-                if result:
-                    # Refresh editable defaults after a reset rather than retaining prior widget values.
-                    for key in list(st.session_state):
-                        if key.startswith("sim_edit_"):
-                            del st.session_state[key]
+    allow_controls = mode == "Simulation" or owner_authenticated()
+    if mode == "Live Hardware" and not allow_controls:
+        with st.container():
+            st.caption("Live hardware controls are reserved for the owner.")
+            if st.checkbox("Unlock owner controls"):
+                if not os.environ.get("DASHBOARD_PASSWORD") or not config.admin_api_token:
+                    st.warning("Owner control credentials have not been configured.")
+                else:
+                    require_dashboard_access()
                     st.rerun()
+    if allow_controls:
+        with st.container(border=True), st.form("controller"):
+            st.subheader("Control Panel")
+            automatic = st.radio(
+                "Control mode",
+                ["AUTO", "MANUAL"],
+                index=0 if control["mode"] == "AUTO" else 1,
+                horizontal=True,
+            )
+            manual = st.slider("Manual fan %", 0, 100, int(control["manual_fan"]))
+            setpoint = st.slider("Controller target °C", 20.0, 35.0, float(control["setpoint"]))
+            st.caption("The fixed 40 °C safety limit overrides manual demand.")
+            fan_on_column, fan_off_column = st.columns(2)
+            fan_on = fan_on_column.form_submit_button("Fan ON", width="stretch")
+            fan_off = fan_off_column.form_submit_button("Fan OFF", width="stretch")
+            st.caption("Fan buttons select MANUAL mode; safety overrides still apply.")
+            apply_control = st.form_submit_button("Apply controller settings", width="stretch")
+            if fan_on or fan_off or apply_control:
+                if request(
+                    "PUT",
+                    base + "/control",
+                    {
+                        "mode": "MANUAL" if fan_on or fan_off else automatic,
+                        "manual_fan": 100 if fan_on else 0 if fan_off else manual,
+                        "setpoint": setpoint,
+                    },
+                    token,
+                ):
+                    st.rerun()
+    if mode == "Simulation":
         telemetry = snapshot["state"]["telemetry"] or {}
         settings = snapshot["simulation"]["settings"]
-        with st.sidebar.form("simulation_settings"):
+        with st.expander("Simulation conditions", expanded=False), st.form("simulation_settings"):
             st.subheader("Simulation controls")
             temperature = st.number_input(
                 "Temperature °C",
@@ -177,33 +195,29 @@ if snapshot:
                 )
                 if result:
                     st.rerun()
-    allow_controls = mode == "Simulation" or owner_authenticated()
-    if mode == "Live Hardware" and not allow_controls:
-        with st.sidebar:
-            st.caption("Live hardware controls are reserved for the owner.")
-            if st.checkbox("Unlock owner controls"):
-                if not os.environ.get("DASHBOARD_PASSWORD") or not config.admin_api_token:
-                    st.warning("Owner control credentials have not been configured.")
-                else:
-                    require_dashboard_access()
-                    st.rerun()
-    if allow_controls:
-        with st.sidebar.form("controller"):
-            st.subheader("Deterministic controller")
-            automatic = st.selectbox(
-                "Control mode", ["AUTO", "MANUAL"], index=0 if control["mode"] == "AUTO" else 1
-            )
-            manual = st.slider("Manual fan %", 0, 100, int(control["manual_fan"]))
-            setpoint = st.slider("Controller target °C", 20.0, 35.0, float(control["setpoint"]))
-            st.caption("The fixed 40 °C safety limit overrides manual demand.")
-            if st.form_submit_button("Apply controller settings"):
-                if request(
-                    "PUT",
-                    base + "/control",
-                    {"mode": automatic, "manual_fan": manual, "setpoint": setpoint},
-                    token,
-                ):
-                    st.rerun()
+
+
+def render_actions():
+    columns = st.columns(3)
+    actions = [
+        ("Start Simulation", "START"),
+        ("Stop Simulation", "STOP"),
+        ("Reset", "RESET"),
+        ("Increase Temperature", "INCREASE"),
+        ("Simulate Overheating", "OVERHEAT"),
+        ("Run Demo Scenario", "DEMO"),
+    ]
+    for index, (label, action) in enumerate(actions):
+        if columns[index % 3].button(
+            label, type="primary" if action == "DEMO" else "secondary", width="stretch"
+        ):
+            result = request("POST", base + "/actions", {"action": action}, token)
+            if result:
+                # Refresh editable defaults after a reset rather than retaining prior widget values.
+                for key in list(st.session_state):
+                    if key.startswith("sim_edit_"):
+                        del st.session_state[key]
+                st.rerun()
 
 
 def utc_time(value):
@@ -229,27 +243,37 @@ def live_view():
         cooling_label = "PAUSED"
     elif offline:
         cooling_label = "UNKNOWN · Offline"
-    cols = st.columns(3) + st.columns(3)
+    metrics, prediction = state["metrics"], state.get("prediction")
     values = [
+        ("System State", state["state"]),
         ("Temperature", f"{telemetry['temperature']:.2f} °C" if telemetry else "—"),
         ("Humidity", f"{telemetry['humidity']:.1f} %" if telemetry else "—"),
+        ("Fan Command", cooling_label),
+        ("Predicted Next", f"{prediction['predicted_temperature']:.2f} °C" if prediction else "—"),
         (
-            "Cooling",
-            cooling_label,
+            "Prediction Error",
+            f"{metrics['prediction_error']:.2f} °C"
+            if metrics["prediction_error"] is not None
+            else "—",
         ),
         (
-            "Device status",
-            ("Running" if simulation["running"] else "Stopped")
-            if simulation
-            else current["device_status"],
+            "Rolling MAE",
+            f"{metrics['rolling_mae']:.2f} °C" if metrics["rolling_mae"] is not None else "—",
         ),
-        ("Digital Twin status", state["state"]),
-        ("Current mode", current["operating_mode"]),
     ]
-    for column, (label, value) in zip(cols, values):
-        column.metric(label, value)
+    with st.container(key="metric_strip"):
+        for column, (label, value) in zip(st.columns([1.4, 1, 0.85, 1, 1, 1, 1]), values):
+            column.metric(label, value)
+    status_columns = st.columns([1, 1, 2.8])
+    status_columns[0].metric(
+        "Device status",
+        ("Running" if simulation["running"] else "Stopped")
+        if simulation
+        else current["device_status"],
+    )
+    status_columns[1].metric("Current mode", current["operating_mode"])
     reported_fan = f"{telemetry['fan_speed']:.0f}%" if telemetry else "No readings yet"
-    st.caption(
+    status_columns[2].caption(
         f"Last update: {utc_time(current['last_update'])} · Target: {current['control']['setpoint']:.1f} °C · "
         f"Last reported fan PWM: {reported_fan} · Control: {state['mode']}"
     )
@@ -265,6 +289,91 @@ def live_view():
             "the backend requests safe fallback and the device firmware has a local watchdog. "
             "You can use Simulation immediately."
         )
+    chart_column, control_column = st.columns([2.35, 1], gap="medium")
+    with chart_column, st.container(border=True):
+        st.subheader("Temperature Over Time")
+        st.caption("● Measured temperature     ┄ Model prediction     ··· Target / safety limit")
+        history = current["history"]
+        if history:
+            frame = pd.DataFrame(history)
+            frame["time"] = pd.to_datetime(frame.timestamp, unit="s", utc=True)
+            chart = (
+                alt.Chart(frame)
+                .mark_line(color="#388bff", strokeWidth=3, point=True)
+                .encode(
+                    x=alt.X("time:T", title="Time (UTC)"),
+                    y=alt.Y("temperature:Q", title="Temperature (°C)", scale=alt.Scale(zero=False)),
+                    tooltip=[
+                        "time:T",
+                        alt.Tooltip("temperature:Q", format=".2f"),
+                        "humidity:Q",
+                        "fan_speed:Q",
+                    ],
+                )
+            )
+            if current["predictions"]:
+                predicted = pd.DataFrame(current["predictions"])
+                predicted["time"] = pd.to_datetime(predicted.target_timestamp, unit="s", utc=True)
+                chart += (
+                    alt.Chart(predicted)
+                    .mark_line(color="#43d9c0", strokeDash=[7, 5], strokeWidth=2)
+                    .encode(
+                        x="time:T",
+                        y="predicted_temperature:Q",
+                        tooltip=["time:T", "predicted_temperature:Q"],
+                    )
+                )
+            thresholds = pd.DataFrame(
+                {
+                    "level": [current["control"]["setpoint"], 40],
+                    "Threshold": ["Target", "Overheating"],
+                }
+            )
+            chart += (
+                alt.Chart(thresholds)
+                .mark_rule(strokeDash=[3, 6], opacity=0.45)
+                .encode(
+                    y="level:Q",
+                    color=alt.Color(
+                        "Threshold:N", scale=alt.Scale(range=["#879fb9", "#ff6565"]), legend=None
+                    ),
+                )
+            )
+            st.altair_chart(
+                chart.properties(height=370)
+                .configure_view(strokeOpacity=0)
+                .configure_axis(gridColor="#20334b", labelColor="#9db2cb", titleColor="#9db2cb"),
+                width="stretch",
+            )
+            st.download_button(
+                "Download recent telemetry",
+                frame.to_csv(index=False),
+                "telemetry.csv",
+                "text/csv",
+                type="tertiary",
+            )
+        else:
+            st.info(
+                "Waiting for sensor data. Start Simulation to explore the model without hardware."
+            )
+    with control_column:
+        render_controls(current)
+        with st.container(border=True):
+            st.subheader("Model Parameters")
+            parameters = current["parameters"]
+            for name, value in parameters.items():
+                if isinstance(value, (int, float)):
+                    label, number = st.columns([2, 1])
+                    label.caption(name.replace("_", " "))
+                    number.markdown(f"**{value:.4f}**")
+            st.caption(f"Model health: {state['model_health']}")
+            st.caption(
+                "Calibration is evaluated automatically by the supervisor when safe, informative data is available."
+            )
+    if simulation:
+        with st.container(border=True):
+            st.subheader("Simulation Lab")
+            render_actions()
     if (
         config.llm_enabled
         and config.llm_api_url
@@ -295,45 +404,9 @@ def live_view():
         for event in simulation["scenario_events"]:
             st.write(f"{utc_time(event['timestamp'])} · {event['description']}")
     overview, model_tab, agent_tab = st.tabs(
-        ["Temperature & transitions", "Model & validation", "Supervisor history"]
+        ["State transitions", "Model & validation", "Supervisor history"]
     )
     with overview:
-        history = current["history"]
-        if history:
-            frame = pd.DataFrame(history)
-            frame["time"] = pd.to_datetime(frame.timestamp, unit="s", utc=True)
-            chart = (
-                alt.Chart(frame)
-                .mark_line(color="#43d9c0")
-                .encode(
-                    x=alt.X("time:T", title="Time (UTC)"),
-                    y=alt.Y("temperature:Q", title="Temperature (°C)", scale=alt.Scale(zero=False)),
-                    tooltip=[
-                        "time:T",
-                        alt.Tooltip("temperature:Q", format=".2f"),
-                        "humidity:Q",
-                        "fan_speed:Q",
-                    ],
-                )
-            )
-            thresholds = pd.DataFrame(
-                {
-                    "level": [current["control"]["setpoint"], 40],
-                    "Threshold": ["Target", "Overheating"],
-                }
-            )
-            rules = (
-                alt.Chart(thresholds)
-                .mark_rule(strokeDash=[5, 5])
-                .encode(
-                    y="level:Q",
-                    color=alt.Color("Threshold:N", scale=alt.Scale(range=["#4b91ff", "#ff6565"])),
-                )
-            )
-            st.altair_chart((chart + rules).properties(height=300), width="stretch")
-            st.download_button(
-                "Download recent telemetry", frame.to_csv(index=False), "telemetry.csv", "text/csv"
-            )
         st.subheader("State transitions")
         if current["transitions"]:
             transitions = pd.DataFrame(current["transitions"])
