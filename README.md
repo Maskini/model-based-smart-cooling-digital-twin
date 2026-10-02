@@ -18,6 +18,11 @@ Current progress:
 
 ## Dashboard
 
+[![Current Smart Cooling Digital Twin dashboard in Simulation mode](docs/assets/dashboard-current.png)](https://maskini.github.io/model-based-smart-cooling-digital-twin/)
+
+Current dashboard captured with simulated cooling active, receiving status, and measured versus predicted temperature. **[Try the live demo](https://maskini.github.io/model-based-smart-cooling-digital-twin/)**.
+
+
 The final dashboard displays:
 
 - measured temperature
