@@ -24,9 +24,11 @@ if not config.public_demo:
     require_dashboard_access()
 
 st.html((Path(__file__).with_name("style.css")).read_text())
-st.markdown(
-    '<div class="brand"><span class="brand-icon">✣</span><div><h1>Model-Based Digital Twin <span>— Smart Cooling System</span></h1><p>LIVE SENSING · PREDICTIVE MODEL · AUTONOMOUS SUPERVISOR</p></div></div>',
-    unsafe_allow_html=True,
+fan_icon = (Path(__file__).parent / "assets" / "fan.svg").read_text()
+st.html(
+    '<div class="brand"><span class="brand-icon">'
+    + fan_icon
+    + "</span><div><h1>Model-Based Digital Twin <span>— Smart Cooling System</span></h1><p>LIVE SENSING · PREDICTIVE MODEL · AUTONOMOUS SUPERVISOR</p></div></div>",
 )
 mode_column, intro_column = st.columns([1, 2.8], vertical_alignment="center")
 with mode_column:
