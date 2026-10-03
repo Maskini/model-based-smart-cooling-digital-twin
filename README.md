@@ -1,6 +1,6 @@
 # Model-Based Smart Cooling Digital Twin
 
-A portfolio-ready cyber-physical application with **Live Hardware** and **Simulation** modes, one shared Digital Twin core, a deterministic safety controller, thermal prediction and an autonomous supervisor. Visitors can try the complete demonstration without an ESP32 or an AI API key.
+An independent software and IoT engineering project combining thermal modelling, temperature prediction, interactive simulation and deterministic cooling control. The public demo is ready to explore without hardware, installation or an AI API key.
 
 **Made by Maskini · © 2026 Maskini**
 
@@ -9,6 +9,17 @@ A portfolio-ready cyber-physical application with **Live Hardware** and **Simula
 **[Open the instant browser demo](https://maskini.github.io/model-based-smart-cooling-digital-twin/)**
 
 Choose **Simulation → Run Demo Scenario** to see overheating detection, cooling and recovery without hardware or a server wake-up. The GitHub Pages dashboard runs simulation locally in JavaScript; its data stays in the tab and resets on reload. Live Hardware connects to the existing Render API and can still experience a cold start. The [Python dashboard](https://smart-cooling-twin-demo.onrender.com/) remains available.
+
+## Project status
+
+**Working software prototype · Public interactive demo available**
+
+- **Deployed demo:** browser simulation with adjustable conditions, temperature history, fan state and a guided overheating-and-recovery scenario.
+- **Implemented software:** Python API, thermal model, state-based control, model calibration, rule-based supervision and ESP32 communication adapters.
+- **Automated validation:** Python 3.11/3.12 tests, browser control/model parity checks and Docker deployment checks. See the [validation report](docs/VALIDATION.md) for scope and results.
+- **Next milestone:** physical ESP32 validation of wiring, sensor accuracy, fan response and end-to-end operation.
+
+Actual actuator commands are validated by deterministic application rules. Optional AI explanations do not control hardware.
 
 ## Dashboard preview
 
@@ -83,7 +94,7 @@ Stop freezes physics, history and telemetry timestamps. Reset affects only that 
 6. Temperature falls toward the 30 °C target.
 7. At or below 29 °C, hysteresis switches cooling off.
 
-The run takes about a minute. Actual state transitions and scenario milestones appear in the UI. Physics generates the rising and falling measurements; the scenario does not directly set actuator commands or relax safety limits.
+The browser demo typically completes in about 30 seconds while the tab is active. Actual state transitions and scenario milestones appear in the UI. Physics generates the rising and falling measurements; the scenario does not directly set actuator commands or relax safety limits.
 
 ## Architecture
 
