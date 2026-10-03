@@ -1,0 +1,458 @@
+import { SimulationSensorSource, Esp32SensorSource } from "./core.mjs";
+const $ = (id) => document.getElementById(id),
+  sim = new SimulationSensorSource(),
+  live = new Esp32SensorSource("https://smart-cooling-twin-demo.onrender.com");
+let mode = "SIMULATION",
+  snapshot = sim.snapshot(),
+  inFlight = false,
+  failed = false,
+  generation = 0;
+const number = (v, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : "—"),
+  time = (t) =>
+    t ? new Date(t * 1000).toLocaleTimeString() : "No readings yet";
+const tell = (t) => ($("notice").textContent = t);
+function syncInputs() {
+  const s = snapshot;
+  $("controlMode").value = s.control.mode;
+  $("manual").value = s.control.manual_fan;
+  $("manualValue").textContent = s.control.manual_fan + "%";
+  $("target").value = s.control.setpoint;
+  if (mode === "SIMULATION") {
+    for (const [id, key] of [
+      ["editTemperature", "t"],
+      ["editHumidity", "humidity"],
+      ["heat", "heat"],
+      ["ambient", "ambient"],
+      ["effect", "effect"],
+      ["noise", "noise"],
+    ])
+      $(id).value = sim[key];
+    $("fault").checked = sim.fault;
+  }
+}
+async function action(fn) {
+  try {
+    await fn();
+    if (mode === "SIMULATION") snapshot = sim.snapshot();
+    else await poll();
+    syncInputs();
+    render();
+  } catch (e) {
+    tell(e.message);
+  }
+}
+function list(id, rows, toText) {
+  const root = $(id);
+  root.replaceChildren();
+  for (const row of rows.slice(-30).reverse()) {
+    const li = document.createElement("li"),
+      stamp = document.createElement("time");
+    stamp.textContent = time(row.timestamp);
+    li.append(stamp, document.createTextNode(toText(row)));
+    root.append(li);
+  }
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.textContent = "Events appear as the system changes.";
+    root.append(li);
+  }
+}
+function chart(rows, target) {
+  const svg = $("chart");
+  svg.replaceChildren();
+  const NS = "http://www.w3.org/2000/svg",
+    el = (tag, attrs, text) => {
+      const node = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      if (text != null) node.textContent = text;
+      svg.append(node);
+      return node;
+    };
+  const data = rows.slice(-180).filter((x) => Number.isFinite(x.temperature));
+  if (!data.length) {
+    el(
+      "text",
+      { x: 450, y: 180, fill: "#9bb0c9", "text-anchor": "middle" },
+      "Waiting for hardware readings",
+    );
+    return;
+  }
+  const low =
+      Math.floor(
+        Math.min(
+          target - 2,
+          ...data.map((x) =>
+            Math.min(x.temperature, x.predicted_temperature ?? x.temperature),
+          ),
+        ) / 2,
+      ) * 2,
+    high =
+      Math.ceil(
+        Math.max(
+          42,
+          ...data.map((x) =>
+            Math.max(x.temperature, x.predicted_temperature ?? x.temperature),
+          ),
+        ) / 2,
+      ) * 2;
+  const first = data[0].timestamp,
+    last = Math.max(first + 1, data.at(-1).timestamp),
+    x = (t) => 65 + ((t - first) / (last - first)) * 815,
+    y = (t) => 325 - ((t - low) / (high - low)) * 295;
+  for (let i = 0; i <= 5; i++) {
+    const v = low + ((high - low) * i) / 5;
+    el("line", { x1: 65, x2: 880, y1: y(v), y2: y(v), stroke: "#23384e" });
+    el(
+      "text",
+      {
+        x: 52,
+        y: y(v) + 4,
+        fill: "#9bb0c9",
+        "text-anchor": "end",
+        "font-size": 12,
+      },
+      v.toFixed(1) + "°",
+    );
+  }
+  for (let i = 0; i <= 4; i++) {
+    const t = first + ((last - first) * i) / 4;
+    el(
+      "text",
+      {
+        x: x(t),
+        y: 350,
+        fill: "#9bb0c9",
+        "text-anchor": "middle",
+        "font-size": 11,
+      },
+      time(t),
+    );
+  }
+  for (const [v, color, label] of [
+    [target, "#b4c7de", "Target"],
+    [40, "#ff7d8c", "Safety 40°C"],
+  ]) {
+    el("line", {
+      x1: 65,
+      x2: 880,
+      y1: y(v),
+      y2: y(v),
+      stroke: color,
+      "stroke-dasharray": "3 6",
+      opacity: 0.65,
+    });
+    el(
+      "text",
+      {
+        x: 875,
+        y: y(v) - 6,
+        fill: color,
+        "text-anchor": "end",
+        "font-size": 10,
+      },
+      label,
+    );
+  }
+  for (const [key, color, dash] of [
+    ["temperature", "#338dff", ""],
+    ["predicted_temperature", "#43d9c0", "7 5"],
+  ]) {
+    let path = "",
+      gap = true;
+    for (const r of data) {
+      if (!Number.isFinite(r[key])) {
+        gap = true;
+        continue;
+      }
+      path += (gap ? "M" : "L") + x(r.timestamp) + "," + y(r[key]);
+      gap = false;
+    }
+    el("path", {
+      d: path,
+      fill: "none",
+      stroke: color,
+      "stroke-width": 2.7,
+      "stroke-dasharray": dash,
+    });
+  }
+  for (const r of data) {
+    const circle = el("circle", {
+      cx: x(r.timestamp),
+      cy: y(r.temperature),
+      r: 3,
+      fill: "#338dff",
+    });
+    const title = document.createElementNS(NS, "title");
+    title.textContent = `${time(r.timestamp)} · ${r.temperature.toFixed(2)} °C · fan ${r.fan_speed.toFixed(0)}%`;
+    circle.append(title);
+  }
+}
+function render() {
+  const s = snapshot,
+    t = s.telemetry,
+    isSim = mode === "SIMULATION",
+    online = isSim || (!failed && s.running),
+    activity = failed && !isSim ? "UNAVAILABLE" : s.connection.activity;
+  $("simulation").setAttribute("aria-pressed", isSim);
+  $("live").setAttribute("aria-pressed", !isSim);
+  $("lab").hidden = !isSim;
+  $("owner").hidden = isSim;
+  $("demo").hidden = !isSim;
+  $("modeHelp").textContent = isSim
+    ? "Simulation runs entirely in your browser. No hardware, sign-in, or sleeping server."
+    : "Hardware readings come from the Python API. Simulation remains available immediately while Render wakes.";
+  $("connection").textContent =
+    (isSim ? "BROWSER" : s.connection.transport) + " · " + activity;
+  $("connection").className =
+    "badge " + (activity === "RECEIVING" ? "good" : "");
+  $("modeBadge").textContent = s.control.mode;
+  $("state").textContent = failed && !isSim ? "UNAVAILABLE" : s.state;
+  $("temperature").textContent = number(t?.temperature) + " °C";
+  $("humidity").textContent = number(t?.humidity, 0) + " %";
+  $("fan").textContent = !online
+    ? "UNKNOWN"
+    : isSim && !s.running
+      ? "PAUSED"
+      : (s.fan > 0 ? "ON" : "OFF") + " · " + number(s.fan, 0) + "%";
+  $("fan").className = s.fan > 0 && online ? "good" : "";
+  $("prediction").textContent = number(failed ? null : s.prediction, 2) + " °C";
+  $("horizon").textContent = isSim ? "1 second" : "2 seconds";
+  $("error").textContent = number(s.error, 2) + " °C";
+  $("mae").textContent = number(s.mae, 2) + " °C";
+  $("analysis").textContent =
+    failed && !isSim
+      ? "The live backend is unavailable or waking up. Historical readings do not confirm current hardware activity."
+      : s.analysis;
+  $("parameters").replaceChildren();
+  for (const [k, v] of Object.entries({
+    ...s.parameters,
+    ambient_temperature: t?.ambient_temperature,
+  })) {
+    const dt = document.createElement("dt"),
+      dd = document.createElement("dd");
+    dt.textContent = k.replaceAll("_", " ");
+    dd.textContent = number(v, k === "ambient_temperature" ? 1 : 4);
+    $("parameters").append(dt, dd);
+  }
+  $("modelHealth").textContent = "Model health: " + s.modelHealth;
+  $("calibrationHelp").textContent = isSim
+    ? "Local fit holds ambient coupling fixed, validates bounds and holdout improvement, then verifies 30 fresh intervals."
+    : "The Python supervisor validates candidates, verifies fresh data and can roll back a poor fit.";
+  for (const id of ["controlMode", "manual", "target", "fanOn", "fanOff"])
+    $(id).disabled = !isSim && (!live.token || failed);
+  $("controller").querySelector("[type=submit]").disabled =
+    !isSim && (!live.token || failed);
+  $("calibrate").disabled =
+    !s.running ||
+    failed ||
+    ["FAULT", "OVERHEATING"].includes(s.state) ||
+    (!isSim && !live.token);
+  $("updated").textContent = "Last update: " + time(t?.timestamp);
+  $("transport").textContent =
+    "Source: " + s.connection.transport + " · " + s.connection.device_id;
+  const labels = {
+    RECEIVING: "Data receiving",
+    PAUSED: "Simulation paused",
+    WAITING: "Waiting for hardware",
+    DELAYED: "Data delayed",
+    OFFLINE: "Device offline",
+    UNAVAILABLE: "Backend waking / unavailable",
+  };
+  $("receiving").textContent = "● " + (labels[activity] || activity);
+  $("receiving").className = activity === "RECEIVING" ? "good" : "";
+  $("chartHelp").textContent = t
+    ? `Reported fan PWM: ${number(t.fan_speed, 0)}%${t.servo_angle != null ? " · Servo: " + number(t.servo_angle, 0) + "°" : ""} · Target: ${s.control.setpoint} °C`
+    : "No readings yet";
+  chart(s.history, s.control.setpoint);
+  $("scenarioPanel").hidden = !isSim || s.phase === "IDLE";
+  $("scenarioTitle").textContent = "Guided Demo · " + s.phase;
+  const phases = ["NORMAL", "HEATING", "OVERHEATING", "RECOVERING", "COMPLETE"];
+  for (const item of document.querySelectorAll("[data-phase]"))
+    item.className =
+      phases.indexOf(item.dataset.phase) <= phases.indexOf(s.phase)
+        ? "active"
+        : "";
+  list("transitions", s.transitions, (r) => r.previous + " → " + r.current);
+  list("events", s.events, (r) => r.text);
+}
+async function poll() {
+  if (mode !== "LIVE" || inFlight) return;
+  const requestGeneration = generation;
+  inFlight = true;
+  try {
+    const result = await live.snapshot();
+    if (mode === "LIVE" && generation === requestGeneration) {
+      snapshot = result;
+      failed = false;
+      tell("");
+      render();
+    }
+  } catch (e) {
+    if (mode === "LIVE" && generation === requestGeneration) {
+      failed = true;
+      tell(
+        "The live backend may be waking up. Retrying automatically; Simulation works immediately.",
+      );
+      render();
+    }
+  } finally {
+    inFlight = false;
+  }
+}
+function select(value) {
+  generation++;
+  mode = value;
+  failed = false;
+  live.token = "";
+  $("token").value = "";
+  tell("");
+  if (mode === "SIMULATION") {
+    snapshot = sim.snapshot();
+    syncInputs();
+    render();
+  } else {
+    snapshot = {
+      ...sim.snapshot(),
+      telemetry: null,
+      history: [],
+      transitions: [],
+      events: [],
+      state: "WAITING",
+      fan: 0,
+      running: false,
+      prediction: null,
+      error: null,
+      mae: null,
+      connection: {
+        activity: "WAITING",
+        transport: "REST",
+        device_id: "cooling-01",
+      },
+      analysis: "Connecting to the hardware backend…",
+    };
+    syncInputs();
+    render();
+    poll();
+  }
+}
+$("simulation").onclick = () => select("SIMULATION");
+$("live").onclick = () => select("LIVE");
+$("manual").oninput = () => {
+  $("manualValue").textContent = $("manual").value + "%";
+};
+$("controller").onsubmit = (e) => {
+  e.preventDefault();
+  action(() => {
+    const c = {
+      mode: $("controlMode").value,
+      manual_fan: +$("manual").value,
+      setpoint: +$("target").value,
+    };
+    return mode === "SIMULATION" ? sim.controls(c) : live.controls(c);
+  });
+};
+for (const [id, fan] of [
+  ["fanOn", 100],
+  ["fanOff", 0],
+])
+  $(id).onclick = () =>
+    action(() => {
+      const c = {
+        mode: "MANUAL",
+        manual_fan: fan,
+        setpoint: snapshot.control.setpoint,
+      };
+      return mode === "SIMULATION" ? sim.controls(c) : live.controls(c);
+    });
+for (const [id, fn] of [
+  ["start", () => sim.start()],
+  ["stop", () => sim.stop()],
+  ["reset", () => sim.reset()],
+  ["demo", () => sim.demo()],
+  [
+    "increase",
+    () => {
+      sim.edit({ t: Math.min(60, sim.t + 5) });
+      sim.start();
+    },
+  ],
+  [
+    "overheat",
+    () => {
+      sim.edit({ t: 42 });
+      sim.start();
+    },
+  ],
+])
+  $(id).onclick = () =>
+    action(() => {
+      tell("");
+      fn();
+    });
+$("conditions").onsubmit = (e) => {
+  e.preventDefault();
+  action(() =>
+    sim.edit({
+      t: +$("editTemperature").value,
+      humidity: +$("editHumidity").value,
+      heat: +$("heat").value,
+      ambient: +$("ambient").value,
+      effect: +$("effect").value,
+      noise: +$("noise").value,
+      fault: $("fault").checked,
+    }),
+  );
+};
+$("calibrate").onclick = () =>
+  action(async () => {
+    if (mode === "SIMULATION") sim.calibrate();
+    else {
+      const r = await live.calibrate();
+      tell(r.result.reason);
+    }
+  });
+$("unlock").onclick = () => {
+  live.token = $("token").value.trim();
+  $("token").value = "";
+  tell(
+    "Token set for this tab. The backend validates it when you submit an owner action.",
+  );
+  render();
+};
+$("lock").onclick = () => {
+  live.token = "";
+  $("token").value = "";
+  render();
+};
+$("download").onclick = () => {
+  const keys = [
+    "timestamp",
+    "temperature",
+    "humidity",
+    "ambient_temperature",
+    "fan_speed",
+    "predicted_temperature",
+  ];
+  const csv =
+    keys.join(",") +
+    "\n" +
+    snapshot.history
+      .map((r) => keys.map((k) => r[k] ?? "").join(","))
+      .join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "smart-cooling-telemetry.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+// Fixed physics steps avoid a large jump after a background tab resumes.
+setInterval(() => {
+  if (mode === "SIMULATION") {
+    sim.tick(Date.now() / 1000, 1);
+    snapshot = sim.snapshot();
+    render();
+  }
+}, 1000);
+setInterval(poll, 2500);
+syncInputs();
+render();

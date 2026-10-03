@@ -167,3 +167,12 @@ firmware/secrets.h
 
 # macOS
 .DS_Store
+
+# Runtime state and hardware credentials
+*.sqlite*
+*.db*
+firmware/**/config.h
+.pio/
+
+# Generated from the Python reference core for browser tests
+tests/browser/parity.json

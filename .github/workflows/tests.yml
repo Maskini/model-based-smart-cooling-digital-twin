@@ -1,0 +1,46 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e '.[dev]'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python scripts/browser_parity.py
+      - run: node --test tests/browser/core.test.mjs
+      - run: pytest -q
+      - run: ruff check src simulator dashboard tests scripts
+      - run: ruff format --check src simulator dashboard tests scripts
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t smart-cooling-twin:test .
+      - name: Verify the complete container starts
+        run: |
+          docker run -d --name twin-smoke -e DASHBOARD_PASSWORD=ci-only-disposable-password smart-cooling-twin:test
+          for attempt in $(seq 1 30); do
+            if [ "$(docker inspect -f '{{.State.Running}}' twin-smoke)" != "true" ]; then
+              docker logs twin-smoke
+              exit 1
+            fi
+            if docker exec twin-smoke python scripts/deployment_health.py; then
+              docker exec twin-smoke python scripts/check_deployment.py
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs twin-smoke
+          exit 1
+      - if: always()
+        run: docker rm -f twin-smoke || true
